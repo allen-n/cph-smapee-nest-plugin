@@ -1,0 +1,21 @@
+{
+  "name": "cph-interface",
+  "version": "1.0.0",
+  "description": "Interface between cph code and smappee and honeywell thermostat",
+  "main": "app.js",
+  "scripts": {
+    "test": "node app.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://allen-n@bitbucket.org/allen-n/cph-interface.git"
+  },
+  "author": "Allen Nikka",
+  "license": "ISC",
+  "homepage": "https://bitbucket.org/allen-n/cph-interface#readme",
+  "dependencies": {
+    "express": "^4.16.4",
+    "https": "^1.0.0",
+    "querystring": "^0.2.0"
+  }
+}
