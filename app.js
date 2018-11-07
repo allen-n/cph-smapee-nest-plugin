@@ -43,8 +43,9 @@ Request Method: GET
  */
 
 
-const honeywell_url = 'https://api.honeywell.com/oauth2/authorize?response_type=code&client_id=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com';
+
 app.get('/honeywell', (req, res) => {
+    let honeywell_url = 'https://api.honeywell.com/oauth2/authorize?response_type=code&client_id=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com';
     res.redirect(honeywell_url);
     // request.post(honeywell_url, function optionalCallback(err, httpResponse, body) {
     //     if (err) {
@@ -56,39 +57,52 @@ app.get('/honeywell', (req, res) => {
     // });
 });
 
-let options_init_auth = {
-    url: 'https://app1pub.smappee.net/dev/v1/oauth2/token',
-    form: {
-        grant_type: 'password',
-        client_id: 'allennikka',
-        client_secret: 'N3KEMfA0BJ',
-        username: 'allennikka',
-        password: 'Smap2Energy'
-    }
-};
 
-var session = {};
-var service_locations = {};
+
+var globals = {
+    session: {},
+    service_locations: {},
+    active_location_id: null,
+    options_get_servicelocation: {
+        url: 'https://app1pub.smappee.net/dev/v1/servicelocation',
+        auth: {
+            bearer: null
+        }
+    },
+    get_energy_data_interval: 600000,
+    appliances: {}
+}
 
 app.get('/', (req, res) => {
-    request.post(options_init_auth, function optionalCallback(err, httpResponse, body) {
+    let options_init_auth = {
+        url: 'https://app1pub.smappee.net/dev/v1/oauth2/token',
+        form: {
+            grant_type: 'password',
+            client_id: 'allennikka',
+            client_secret: 'N3KEMfA0BJ',
+            username: 'allennikka',
+            password: 'Smap2Energy'
+        }
+    };
+
+    request.post(options_init_auth, (err, httpResponse, body) => {
         if (err) {
             return console.error('upload failed:', err);
         }
         console.log('Upload successful!  Server responded with:', body);
-        session = JSON.parse(body);
-        options_get_servicelocation.auth.bearer = session.access_token;
-        setTimeout(refresh_my_token, session.expires_in + 10)
+        globals.session = JSON.parse(body);
+        globals.options_get_servicelocation.auth.bearer = globals.session.access_token;
+        setTimeout(refresh_my_token, globals.session.expires_in + 10)
         res.redirect('/auth_success')
     });
 });
 
-function refresh_my_token(){
+function refresh_my_token() {
     let options = {
         url: 'https://app1pub.smappee.net/dev/v1/oauth2/token',
         form: {
             grant_type: 'refresh_token',
-            refresh_token: session.refresh_token,
+            refresh_token: globals.session.refresh_token,
             client_id: 'allennikka',
             client_secret: 'N3KEMfA0BJ'
         }
@@ -98,69 +112,60 @@ function refresh_my_token(){
             return console.error('upload failed:', err);
         }
         // console.log('Upload successful!  Server responded with:', body);
-        session = JSON.parse(body);
-        options_get_servicelocation.auth.bearer = session.access_token;
-        setTimeout(refresh_my_token, session.expires_in + 10)
+        globals.session = JSON.parse(body);
+        globals.options_get_servicelocation.auth.bearer = globals.session.access_token;
+        setTimeout(refresh_my_token, globals.session.expires_in + 10)
     });
 }
 
-var options_get_servicelocation = {
-    url: 'https://app1pub.smappee.net/dev/v1/servicelocation',
-    auth: {
-        bearer: null
-    }
-}
-
 app.get('/auth_success', (req, res) => {
-    request.get(options_get_servicelocation, (err, httpResponse, body) => {
+    request.get(globals.options_get_servicelocation, (err, httpResponse, body) => {
         if (err) {
             return console.error('upload failed:', err);
         }
         console.log('Loc Request Successful!  Server responded with:', body);
-        service_locations = JSON.parse(body).serviceLocations;
-        // res.send(service_locations)
+        globals.service_locations = JSON.parse(body).serviceLocations;
+        globals.active_location_id = globals.service_locations[globals.service_locations.length - 1].serviceLocationId;
+        // res.send(globals.service_locations.session)
         res.redirect('/energy_scrape')
     });
 });
-
-var get_energy_data_interval = 60 * 10 * 1000; //in mseconds (10 mins)
-
-var options_get_energy_data = {
-    url: null, //[SERVICELOCATIONID]/events
-    auth: {
-        bearer: null
-    },
-};
-
-function re_energy_scrape() {
-    //configured to get last location, in this case the Smappee pro unit, update query
-    options_get_energy_data.url = 'https://app1pub.smappee.net/dev/v1/servicelocation/' +
-        service_locations[service_locations.length - 1].serviceLocationId + '/consumption'
-    options_get_energy_data.auth.bearer = session.access_token;
-    let from = Date.now() - get_energy_data_interval;
-    let to = Date.now();
-    options_get_energy_data.url += '?aggregation=1&from=' + from + '&to=' + to;
-
-    request.get(options_get_energy_data, (err, httpResponse, body) => {
-        if (err) {
-            return console.error('upload failed:', err);
-        }
-        var data = JSON.parse(body);
-        console.log('Loc Request Successful!  Server responded with:', data);
-        // res.send(options_get_energy_data.url + ' : ' + data )        
-        // res.redirect('/energy_scrape')
-    });
-    setTimeout(re_energy_scrape, 10000);
-}
 
 app.get('/energy_scrape', (req, res) => {
     res.send('done')
     re_energy_scrape();
 });
 
+function gen_get_energy_data() {
+    let options_get_energy_data = {
+        url: null, //[SERVICELOCATIONID]/events
+        auth: {
+            bearer: null
+        },
+    };
+    //configured to get last location, in this case the Smappee pro unit, update query
+    options_get_energy_data.url = 'https://app1pub.smappee.net/dev/v1/servicelocation/' +
+        globals.active_location_id + '/consumption'
+    options_get_energy_data.auth.bearer = globals.session.access_token;
+    let from = Date.now() - globals.get_energy_data_interval;
+    let to = Date.now();
+    options_get_energy_data.url += '?aggregation=1&from=' + from + '&to=' + to;
+    return options_get_energy_data;
+}
 
+function re_energy_scrape() {
+    let options_get_appliances = gen_get_appliances();
 
-
+    let options_get_energy_data = gen_get_energy_data();
+    request.get(options_get_energy_data, (err, httpResponse, body) => {
+        if (err) {
+            return console.error('upload failed:', err);
+        }
+        var data = JSON.parse(body);
+        console.log('Loc Request Successful!  Server responded with:', data);
+    });
+    setTimeout(re_energy_scrape, 10000);
+}
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`))
 
