@@ -3,6 +3,48 @@ const app = express()
 const request = require('request')
 const port = 3000
 
+let options_init_auth_honeywell = {
+    url: 'https://api.honeywell.com/oauth2/authorize',
+    form: {
+        grant_type: 'code',
+        client_id: 'OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv',
+        redirect_uri: 'http://cyberpoweredhome.com',
+    }
+}
+
+
+/**
+*
+Request from API login page:
+Request URL: https://api.honeywell.com/oauth2/app/login?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com&app=cph-integration
+Request Method: POST
+
+requests after successful login, all made sequentially:
+Request URL: https://api.honeywell.com/oauth2/app/consent?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&app=cph-integration&redirect_uri=http%3A%2F%2Fcyberpoweredhome.com
+Request Method: POST
+
+Request URL: https://api.honeywell.com/oauth2/app/acl?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&app=cph-integration&redirect_uri=http%3A%2F%2Fcyberpoweredhome.com
+Request Method: GET
+
+Request URL: http://cyberpoweredhome.com/?code=Ly0RxRYb&scope=
+Request Method: GET
+ * 
+ */
+
+
+const honeywell_url = 'https://api.honeywell.com/oauth2/authorize?response_type=code&client_id=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com';
+app.get('/honeywell', (req, res) => {
+    res.redirect(honeywell_url);
+    // request.post(honeywell_url, function optionalCallback(err, httpResponse, body) {
+    //     if (err) {
+    //         return console.error('upload failed:', err);
+    //     }        
+    //     // let data = JSON.parse(body);
+    //     console.log('Upload successful!  Server responded with:', body);
+    //     res.send('data')
+    // });
+});
+
 let options_init_auth = {
     url: 'https://app1pub.smappee.net/dev/v1/oauth2/token',
     form: {
@@ -13,7 +55,6 @@ let options_init_auth = {
         password: 'Smap2Energy'
     }
 };
-
 
 var session = {};
 var service_locations = {};
