@@ -69,8 +69,9 @@ var globals = {
             bearer: null
         }
     },
-    get_energy_data_interval: 600000,
-    appliances: {}
+    scrape_interval_energy: 600000, // scrape for consumption data every 10 minutes
+    appliances: {},
+    scrape_interval_appliance: 86400000, //scrape for new appliances once a day
 }
 
 app.get('/', (req, res) => {
@@ -126,15 +127,46 @@ app.get('/auth_success', (req, res) => {
         console.log('Loc Request Successful!  Server responded with:', body);
         globals.service_locations = JSON.parse(body).serviceLocations;
         globals.active_location_id = globals.service_locations[globals.service_locations.length - 1].serviceLocationId;
-        // res.send(globals.service_locations.session)
+
         res.redirect('/energy_scrape')
     });
 });
 
+function parse_locations(body, err) {
+
+}
+
 app.get('/energy_scrape', (req, res) => {
-    res.send('done')
+    res.send('done');
+    re_appliance_scrape();
     re_energy_scrape();
 });
+
+function gen_get_appliances() {
+    let options = {
+        url: null, //[SERVICELOCATIONID]/events
+        auth: {
+            bearer: null
+        },
+    };
+    //configured to get last location, in this case the Smappee pro unit, update query
+    options.url = 'https://app1pub.smappee.net/dev/v1/servicelocation/' +
+        globals.active_location_id + '/info'
+    options.auth.bearer = globals.session.access_token;
+    return options;
+}
+
+function re_appliance_scrape() {
+    let options_get_appliances = gen_get_appliances();
+    request.get(options_get_appliances, (err, httpResponse, body) => {
+        if (err) {
+            return console.error('upload failed:', err);
+        }
+        var data = JSON.parse(body);
+        console.log('Appliances data:', data.appliances);
+    });
+    setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
+}
 
 function gen_get_energy_data() {
     let options_get_energy_data = {
@@ -147,15 +179,13 @@ function gen_get_energy_data() {
     options_get_energy_data.url = 'https://app1pub.smappee.net/dev/v1/servicelocation/' +
         globals.active_location_id + '/consumption'
     options_get_energy_data.auth.bearer = globals.session.access_token;
-    let from = Date.now() - globals.get_energy_data_interval;
+    let from = Date.now() - globals.scrape_interval_energy;
     let to = Date.now();
     options_get_energy_data.url += '?aggregation=1&from=' + from + '&to=' + to;
     return options_get_energy_data;
 }
 
 function re_energy_scrape() {
-    let options_get_appliances = gen_get_appliances();
-
     let options_get_energy_data = gen_get_energy_data();
     request.get(options_get_energy_data, (err, httpResponse, body) => {
         if (err) {
@@ -164,7 +194,7 @@ function re_energy_scrape() {
         var data = JSON.parse(body);
         console.log('Loc Request Successful!  Server responded with:', data);
     });
-    setTimeout(re_energy_scrape, 10000);
+    setTimeout(re_energy_scrape, globals.scrape_interval_energy);
 }
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`))
