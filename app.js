@@ -6,60 +6,17 @@ const port = 3000
 const Json2csvParser = require('json2csv').Parser;
 
 
-// var mongo_url = "mongodb://localhost:27017/mydb";
+const mongo_url = "mongodb://localhost:27017/cphdb";
 
-// MongoClient.connect(mongo_url, (err, db) => {
-//     if (err) throw err;
-//     var dbo = db.db("mydb");
-//     dbo.createCollection("sp_adata", (err, res) => {
-//         if (err) throw err;
-//         console.log("Collection created!");
-//         db.close();
-//     });
-// });
-
-let options_init_auth_honeywell = {
-    url: 'https://api.honeywell.com/oauth2/authorize',
-    form: {
-        grant_type: 'code',
-        client_id: 'OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv',
-        redirect_uri: 'http://cyberpoweredhome.com',
-    }
-}
-/**
-*
-Request from API login page:
-Request URL: https://api.honeywell.com/oauth2/app/login?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com&app=cph-integration
-Request Method: POST
-
-requests after successful login, all made sequentially:
-Request URL: https://api.honeywell.com/oauth2/app/consent?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&app=cph-integration&redirect_uri=http%3A%2F%2Fcyberpoweredhome.com
-Request Method: POST
-
-Request URL: https://api.honeywell.com/oauth2/app/acl?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&app=cph-integration&redirect_uri=http%3A%2F%2Fcyberpoweredhome.com
-Request Method: GET
-
-Request URL: http://cyberpoweredhome.com/?code=Ly0RxRYb&scope=
-Request Method: GET
- * 
- */
-
-
-
-app.get('/honeywell', (req, res) => {
-    let honeywell_url = 'https://api.honeywell.com/oauth2/authorize?response_type=code&client_id=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com';
-    res.redirect(honeywell_url);
-    // request.post(honeywell_url, function optionalCallback(err, httpResponse, body) {
-    //     if (err) {
-    //         return console.error('upload failed:', err);
-    //     }        
-    //     // let data = JSON.parse(body);
-    //     console.log('Upload successful!  Server responded with:', body);
-    //     res.send('data')
-    // });
+MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
+    if (err) throw err;
+    var dbo = db.db("cphdb");
+    dbo.createCollection("sp_data", (err, res) => {
+        if (err) throw err;
+        console.log("Collection created!");
+        db.close();
+    });
 });
-
-
 
 var globals = {
     session: {},
@@ -209,7 +166,7 @@ function gen_get_energy_data() {
     options_get_energy_data.auth.bearer = globals.session.access_token;
     let from = '';
     if (globals.first_row) {
-        from = Date.now() - 1200000; //for first read, look back 20 minutes to make sure we get the 
+        from = Date.now() - 12000000; //for first read, look back 20 minutes to make sure we get the 
         globals.first_row = false;
     } else {
         from = Date.now() - globals.scrape_interval_energy;
@@ -230,8 +187,6 @@ function re_energy_scrape() {
         let id_set = new Set();
         let recent_events = [];
         let csv = '';
-        const opts = { fields: ['totalPower', 'activePower'], header: false };
-        const parser = new Json2csvParser(opts);
         if (data.length > 0) {
             for (i in data) {
                 if (!id_set.has(data[i].applianceId)) {
@@ -241,19 +196,9 @@ function re_energy_scrape() {
                     recent_events[my_id] = my_obj;
                 }
             }
-            for (let i = 0; i < recent_events.length; i++) {
-                if (recent_events[i] == null) {
-                    csv += ',,';
-                } else {
-                    try {
-                        csv += parser.parse(recent_events[i]);
-                        csv += ',';
-                    } catch (err) {
-                        console.error(err);
-                    }
-                }
-            }
+
         }
+        appliance_events_to_csv(recent_events);
 
         console.log('Appliance Event Fetch Successful:', data);
         console.log('Most Recent Event per Appliance csv:', csv);
@@ -274,23 +219,91 @@ function re_energy_scrape() {
             //pull in the previous data from mongo
         }
         console.log('Energy Use Event Fetch Successful::', data);
-        const opts = { fields: ['timestamp', 'consumption'], header: false };
         if (last_data != null) { //FIXME, for testing before we have mongo integration
+            energy_data_to_csv(last_data)
+        }
+    });
+    setTimeout(re_energy_scrape, globals.scrape_interval_energy);
+}
+
+function appliance_events_to_csv(recent_events, opts = { fields: ['totalPower', 'activePower'], header: false }) {
+    let csv = '';
+    const parser = new Json2csvParser(opts);
+    for (let i = 0; i < recent_events.length; i++) {
+        if (recent_events[i] == null) {
+            csv += ',,';
+        } else {
             try {
-                const parser = new Json2csvParser(opts);
-                let csv = parser.parse(last_data);
-                csv = csv.concat(last_data.active.join(), last_data.reactive.join());
-                console.log(csv);
-                delete parser;
+                csv += parser.parse(recent_events[i]);
+                csv += ',';
             } catch (err) {
                 console.error(err);
             }
         }
-    });
-    setTimeout(re_energy_scrape, globals.scrape_interval_energy);
+    }
+    return csv;
+}
+
+function energy_data_to_csv(last_data, opts = { fields: ['timestamp', 'consumption'], header: false }) {
+    let csv = '';
+    try {
+        const parser = new Json2csvParser(opts);
+        csv = parser.parse(last_data);
+        csv = csv.concat(last_data.active.join(), last_data.reactive.join());
+        console.log(csv);
+        delete parser;
+    } catch (err) {
+        console.error(err);
+    }
+    return csv
 }
 
 app.listen(port, () => console.log(`Example app listening on port ${port}!`))
 
 
 
+
+let options_init_auth_honeywell = {
+    url: 'https://api.honeywell.com/oauth2/authorize',
+    form: {
+        grant_type: 'code',
+        client_id: 'OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv',
+        redirect_uri: 'http://cyberpoweredhome.com',
+    }
+}
+/**
+*
+NEST:
+https://console.developers.nest.com/products/7ce5f2f9-1971-4933-b340-c7cba51bb7e5
+
+
+Request from API login page:
+Request URL: https://api.honeywell.com/oauth2/app/login?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com&app=cph-integration
+Request Method: POST
+
+requests after successful login, all made sequentially:
+Request URL: https://api.honeywell.com/oauth2/app/consent?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&app=cph-integration&redirect_uri=http%3A%2F%2Fcyberpoweredhome.com
+Request Method: POST
+
+Request URL: https://api.honeywell.com/oauth2/app/acl?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&app=cph-integration&redirect_uri=http%3A%2F%2Fcyberpoweredhome.com
+Request Method: GET
+
+Request URL: http://cyberpoweredhome.com/?code=Ly0RxRYb&scope=
+Request Method: GET
+ * 
+ */
+
+
+
+app.get('/honeywell', (req, res) => {
+    let honeywell_url = 'https://api.honeywell.com/oauth2/authorize?response_type=code&client_id=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com';
+    res.redirect(honeywell_url);
+    // request.post(honeywell_url, function optionalCallback(err, httpResponse, body) {
+    //     if (err) {
+    //         return console.error('upload failed:', err);
+    //     }        
+    //     // let data = JSON.parse(body);
+    //     console.log('Upload successful!  Server responded with:', body);
+    //     res.send('data')
+    // });
+});
