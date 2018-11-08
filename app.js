@@ -1,8 +1,10 @@
 const express = require('express')
 const app = express()
 const request = require('request')
-var MongoClient = require('mongodb').MongoClient
+var MongoClient = require('mongodb').MongoClient //to go to csv: https://www.npmjs.com/package/json2csv
 const port = 3000
+const Json2csvParser = require('json2csv').Parser;
+
 
 // var mongo_url = "mongodb://localhost:27017/mydb";
 
@@ -69,9 +71,10 @@ var globals = {
             bearer: null
         }
     },
-    scrape_interval_energy: 600000, // scrape for consumption data every 10 minutes
+    scrape_interval_energy: 30000, // scrape for consumption data every 30 seconds
     appliances: {},
     scrape_interval_appliance: 86400000, //scrape for new appliances once a day
+    first_row: true
 }
 
 app.get('/', (req, res) => {
@@ -137,9 +140,8 @@ function parse_locations(body, err) {
 }
 
 app.get('/energy_scrape', (req, res) => {
-    res.send('done');
+    res.send('Done getting appliances. Check terminal window for more data.');
     re_appliance_scrape();
-    re_energy_scrape();
 });
 
 function gen_get_appliances() {
@@ -163,10 +165,36 @@ function re_appliance_scrape() {
             return console.error('upload failed:', err);
         }
         var data = JSON.parse(body);
-        console.log('Appliances data:', data.appliances);
+        //only do this on first run, timeouts will continue subsequent re_energy_scrape()
+        if (globals.first_row) {
+            re_energy_scrape(); //Now that we have the total list of devices, look at device events
+        }
     });
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
+
+function gen_get_appliance_events() {
+    let options = {
+        url: null, //[SERVICELOCATIONID]/events
+        auth: {
+            bearer: null
+        },
+    };
+    //configured to get last location, in this case the Smappee pro unit, update query
+    options.url = 'https://app1pub.smappee.net/dev/v1/servicelocation/' +
+        globals.active_location_id + '/events?'
+    options.auth.bearer = globals.session.access_token;
+    for (p in globals.appliances) {
+        let id = p.id;
+        options.url += 'applianceId=' + id + '&';
+    }
+    let from = Date.now() - globals.scrape_interval_energy;
+    let to = Date.now();
+    options.url += 'maxNumber=100&';
+    options.url += 'from=' + from + '&to=' + to;
+    return options;
+}
+
 
 function gen_get_energy_data() {
     let options_get_energy_data = {
@@ -179,20 +207,85 @@ function gen_get_energy_data() {
     options_get_energy_data.url = 'https://app1pub.smappee.net/dev/v1/servicelocation/' +
         globals.active_location_id + '/consumption'
     options_get_energy_data.auth.bearer = globals.session.access_token;
-    let from = Date.now() - globals.scrape_interval_energy;
+    let from = '';
+    if (globals.first_row) {
+        from = Date.now() - 1200000; //for first read, look back 20 minutes to make sure we get the 
+        globals.first_row = false;
+    } else {
+        from = Date.now() - globals.scrape_interval_energy;
+    }
     let to = Date.now();
     options_get_energy_data.url += '?aggregation=1&from=' + from + '&to=' + to;
     return options_get_energy_data;
 }
 
+
 function re_energy_scrape() {
+    let options_get_appliance_events = gen_get_appliance_events();
+    request.get(options_get_appliance_events, (err, httpResponse, body) => {
+        if (err) {
+            return console.error('upload failed:', err);
+        }
+        var data = JSON.parse(body);
+        let id_set = new Set();
+        let recent_events = [];
+        let csv = '';
+        const opts = { fields: ['totalPower', 'activePower'], header: false };
+        const parser = new Json2csvParser(opts);
+        if (data.length > 0) {
+            for (i in data) {
+                if (!id_set.has(data[i].applianceId)) {
+                    id_set.add(data[i].applianceId);
+                    let my_id = data[i].applianceId;
+                    let my_obj = data[i];
+                    recent_events[my_id] = my_obj;
+                }
+            }
+            for (let i = 0; i < recent_events.length; i++) {
+                if (recent_events[i] == null) {
+                    csv += ',,';
+                } else {
+                    try {
+                        csv += parser.parse(recent_events[i]);
+                        csv += ',';
+                    } catch (err) {
+                        console.error(err);
+                    }
+                }
+            }
+        }
+
+        console.log('Appliance Event Fetch Successful:', data);
+        console.log('Most Recent Event per Appliance csv:', csv);
+        delete id_set;
+        delete parser;
+    });
+
     let options_get_energy_data = gen_get_energy_data();
     request.get(options_get_energy_data, (err, httpResponse, body) => {
         if (err) {
             return console.error('upload failed:', err);
         }
         var data = JSON.parse(body);
-        console.log('Loc Request Successful!  Server responded with:', data);
+        let last_data = null;
+        if (data.consumptions.length > 0) {
+            last_data = data.consumptions[0]
+        } else {
+            //pull in the previous data from mongo
+        }
+        console.log('Energy Use Event Fetch Successful::', data);
+        const opts = { fields: ['timestamp', 'consumption'], header: false };
+        if (last_data != null) { //FIXME, for testing before we have mongo integration
+            try {
+                const parser = new Json2csvParser(opts);
+                let csv = parser.parse(last_data);
+                csv = csv.concat(last_data.active.join(), last_data.reactive.join());
+                console.log(csv);
+                delete parser;
+            } catch (err) {
+                console.error(err);
+            }
+        }
     });
     setTimeout(re_energy_scrape, globals.scrape_interval_energy);
 }
