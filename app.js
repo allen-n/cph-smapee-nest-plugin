@@ -8,15 +8,28 @@ const Json2csvParser = require('json2csv').Parser;
 
 const mongo_url = "mongodb://localhost:27017/cphdb";
 
-MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
-    if (err) throw err;
-    var dbo = db.db("cphdb");
-    dbo.createCollection("sp_data", (err, res) => {
+function insert_to_mongodb(json, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
         if (err) throw err;
-        console.log("Collection created!");
-        db.close();
+        var dbo = db.db("cphdb");
+        dbo.collection(collection_name).insertOne(json, function(err, res) {
+            if (err) throw err;
+            console.log("1 document inserted");
+            db.close();
+        });
     });
-});
+}
+
+// // Code to set up mongoDb database initially
+// MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
+//     if (err) throw err;
+//     var dbo = db.db("cphdb");
+//     dbo.createCollection("sp_data", (err, res) => {
+//         if (err) throw err;
+//         console.log("Collection created!");
+//         db.close();
+//     });
+// });
 
 var globals = {
     session: {},
@@ -221,6 +234,7 @@ function re_energy_scrape() {
         console.log('Energy Use Event Fetch Successful::', data);
         if (last_data != null) { //FIXME, for testing before we have mongo integration
             energy_data_to_csv(last_data)
+            insert_to_mongodb(last_data)
         }
     });
     setTimeout(re_energy_scrape, globals.scrape_interval_energy);
