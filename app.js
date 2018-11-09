@@ -20,16 +20,37 @@ function insert_to_mongodb(json, collection_name = 'sp_data', mongo_url = 'mongo
     });
 }
 
-// // Code to set up mongoDb database initially
-// MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
-//     if (err) throw err;
-//     var dbo = db.db("cphdb");
-//     dbo.createCollection("sp_data", (err, res) => {
-//         if (err) throw err;
-//         console.log("Collection created!");
-//         db.close();
-//     });
-// });
+function get_latest_mongodb(collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+    let last_val = null;
+    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
+        if (err) throw err;
+        var dbo = db.db("cphdb");
+        last_val = dbo.collection(collection_name).findOne({}, { sort: { $natural: -1 } }, (err, res) => {
+            if (err) throw err;
+            console.log('Last event fetched from mongodb');
+
+        })
+    });
+    return last_val;
+}
+
+function get_all_mongodb(num_records = 100, natural_order = false, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+    let last_val = null;
+    let ord = -1;
+    if (natural_order) {
+        1
+    }
+    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
+        if (err) throw err;
+        var dbo = db.db("cphdb");
+        last_val = dbo.collection(collection_name).find({}, { sort: { $natural: ord } }, (err, res) => {
+            if (err) throw err;
+            console.log('Last event fetched from mongodb');
+
+        })
+    });
+    return last_val;
+}
 
 var globals = {
     session: {},
@@ -47,7 +68,7 @@ var globals = {
     first_row: true
 }
 
-app.get('/', (req, res) => {
+app.get('/start', (req, res) => {
     let options_init_auth = {
         url: 'https://app1pub.smappee.net/dev/v1/oauth2/token',
         form: {
@@ -154,6 +175,7 @@ function re_energy_scrape() {
         mongo_row.appliance = appliance_events_req(body, err);
         request.get(options_get_energy_data, (err, httpResponse, body) => {
             mongo_row.energy = energy_data_req(body, err);
+            mongo_row.srv_time = Date.now();
             insert_to_mongodb(mongo_row);
         });
     });
@@ -204,13 +226,15 @@ function gen_get_energy_data() {
     options_get_energy_data.auth.bearer = globals.session.access_token;
     let from = '';
     if (globals.first_row) {
-        from = Date.now() - 12000000; //for first read, look back 20 minutes to make sure we get the 
+        from = Date.now() - 1200000; //for first read, look back 20 minutes to make sure we get an event 
         globals.first_row = false;
     } else {
         from = Date.now() - globals.scrape_interval_energy;
     }
     let to = Date.now();
     options_get_energy_data.url += '?aggregation=1&from=' + from + '&to=' + to;
+    console.log('the energy data request is:');
+    console.log(options_get_energy_data.url);
     return options_get_energy_data;
 }
 
@@ -241,7 +265,7 @@ function appliance_events_req(body, err) {
     }
     // appliance_events_to_csv(recent_events);    
     console.log('Appliance Event Fetch Successful:', data);
-    console.log('Most Recent Event per Appliance csv:', csv);
+    // console.log('Most Recent Event per Appliance csv:', csv);
     delete id_set;
     delete parser;
     return recent_events
@@ -257,20 +281,19 @@ function energy_data_req(body, err) {
         return console.error('upload failed:', err);
     }
     var data = JSON.parse(body);
+    console.log('energy data req:');
+    console.log(data);
+
+
     let last_data = null;
     if (data.consumptions.length > 0) {
-        last_data = data.consumptions[0]
+        return data.consumptions[0]
     } else {
-        //pull in the previous data from mongo
+        let last_mongo_data = get_latest_mongodb();
+        console.log(last_mongo_data);
+        return last_mongo_data
     }
     console.log('Energy Use Event Fetch Successful::', data);
-    if (last_data != null) { //FIXME, for testing before we have mongo integration
-        energy_data_to_csv(last_data)
-        return last_data
-        // insert_to_mongodb(last_data)
-    } else {
-        return 'FIXME: old energy data here!!'
-    }
 }
 
 function appliance_events_to_csv(recent_events, opts = { fields: ['totalPower', 'activePower'], header: false }) {
