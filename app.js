@@ -12,7 +12,7 @@ function insert_to_mongodb(json, collection_name = 'sp_data', mongo_url = 'mongo
     MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
         if (err) throw err;
         var dbo = db.db("cphdb");
-        dbo.collection(collection_name).insertOne(json, function(err, res) {
+        dbo.collection(collection_name).insertOne(json, function (err, res) {
             if (err) throw err;
             console.log("1 document inserted");
             db.close();
@@ -63,7 +63,7 @@ app.get('/', (req, res) => {
         if (err) {
             return console.error('upload failed:', err);
         }
-        console.log('Upload successful!  Server responded with:', body);
+        // console.log('Upload successful!  Server responded with:', body);
         globals.session = JSON.parse(body);
         globals.options_get_servicelocation.auth.bearer = globals.session.access_token;
         setTimeout(refresh_my_token, globals.session.expires_in + 10)
@@ -97,7 +97,7 @@ app.get('/auth_success', (req, res) => {
         if (err) {
             return console.error('upload failed:', err);
         }
-        console.log('Loc Request Successful!  Server responded with:', body);
+        // console.log('Loc Request Successful!  Server responded with:', body);
         globals.service_locations = JSON.parse(body).serviceLocations;
         globals.active_location_id = globals.service_locations[globals.service_locations.length - 1].serviceLocationId;
 
@@ -143,7 +143,28 @@ function re_appliance_scrape() {
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
 
+function re_energy_scrape() {
+    /*
+    Scrape for energy and appliance events in last globals.scrape_interval_energy time period
+    */
+    let options_get_appliance_events = gen_get_appliance_events();
+    let options_get_energy_data = gen_get_energy_data();
+    let mongo_row = {};
+    request.get(options_get_appliance_events, (err, httpResponse, body) => {
+        mongo_row.appliance = appliance_events_req(body, err);
+        request.get(options_get_energy_data, (err, httpResponse, body) => {
+            mongo_row.energy = energy_data_req(body, err);
+            insert_to_mongodb(mongo_row);
+        });
+    });
+    setTimeout(re_energy_scrape, globals.scrape_interval_energy);
+}
+
 function gen_get_appliance_events() {
+    /*
+    Generate options JSON for request.get() call to get 
+    appliance events in last globals.scrape_interval_energy time period
+     */
     let options = {
         url: null, //[SERVICELOCATIONID]/events
         auth: {
@@ -167,6 +188,10 @@ function gen_get_appliance_events() {
 
 
 function gen_get_energy_data() {
+    /*
+    Generate options JSON for request.get() call to get 
+    energy events in last globals.scrape_interval_energy time period
+    */
     let options_get_energy_data = {
         url: null, //[SERVICELOCATIONID]/events
         auth: {
@@ -190,54 +215,62 @@ function gen_get_energy_data() {
 }
 
 
-function re_energy_scrape() {
-    let options_get_appliance_events = gen_get_appliance_events();
-    request.get(options_get_appliance_events, (err, httpResponse, body) => {
-        if (err) {
-            return console.error('upload failed:', err);
-        }
-        var data = JSON.parse(body);
-        let id_set = new Set();
-        let recent_events = [];
-        let csv = '';
-        if (data.length > 0) {
-            for (i in data) {
-                if (!id_set.has(data[i].applianceId)) {
-                    id_set.add(data[i].applianceId);
-                    let my_id = data[i].applianceId;
-                    let my_obj = data[i];
-                    recent_events[my_id] = my_obj;
-                }
+function appliance_events_req(body, err) {
+    /*
+    Handle body and error returns from anonymous callback on
+    request.get() to recieve appliance events, return
+    array of appliance event json in index order
+    */
+    if (err) {
+        return console.error('upload failed:', err);
+    }
+    var data = JSON.parse(body);
+    let id_set = new Set();
+    let recent_events = [];
+    let csv = '';
+    if (data.length > 0) {
+        for (i in data) {
+            if (!id_set.has(data[i].applianceId)) {
+                id_set.add(data[i].applianceId);
+                let my_id = data[i].applianceId;
+                let my_obj = data[i];
+                recent_events[my_id] = my_obj;
             }
+        }
 
-        }
-        appliance_events_to_csv(recent_events);
+    }
+    // appliance_events_to_csv(recent_events);    
+    console.log('Appliance Event Fetch Successful:', data);
+    console.log('Most Recent Event per Appliance csv:', csv);
+    delete id_set;
+    delete parser;
+    return recent_events
+}
 
-        console.log('Appliance Event Fetch Successful:', data);
-        console.log('Most Recent Event per Appliance csv:', csv);
-        delete id_set;
-        delete parser;
-    });
-
-    let options_get_energy_data = gen_get_energy_data();
-    request.get(options_get_energy_data, (err, httpResponse, body) => {
-        if (err) {
-            return console.error('upload failed:', err);
-        }
-        var data = JSON.parse(body);
-        let last_data = null;
-        if (data.consumptions.length > 0) {
-            last_data = data.consumptions[0]
-        } else {
-            //pull in the previous data from mongo
-        }
-        console.log('Energy Use Event Fetch Successful::', data);
-        if (last_data != null) { //FIXME, for testing before we have mongo integration
-            energy_data_to_csv(last_data)
-            insert_to_mongodb(last_data)
-        }
-    });
-    setTimeout(re_energy_scrape, globals.scrape_interval_energy);
+function energy_data_req(body, err) {
+    /*
+    Handle body and error returns from anonymous callback on
+    request.get() to recieve energy events, return most recent 
+    JSON object with previous energy data from smappee
+    */
+    if (err) {
+        return console.error('upload failed:', err);
+    }
+    var data = JSON.parse(body);
+    let last_data = null;
+    if (data.consumptions.length > 0) {
+        last_data = data.consumptions[0]
+    } else {
+        //pull in the previous data from mongo
+    }
+    console.log('Energy Use Event Fetch Successful::', data);
+    if (last_data != null) { //FIXME, for testing before we have mongo integration
+        energy_data_to_csv(last_data)
+        return last_data
+        // insert_to_mongodb(last_data)
+    } else {
+        return 'FIXME: old energy data here!!'
+    }
 }
 
 function appliance_events_to_csv(recent_events, opts = { fields: ['totalPower', 'activePower'], header: false }) {
