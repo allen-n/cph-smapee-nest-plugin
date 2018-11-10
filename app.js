@@ -20,36 +20,34 @@ function insert_to_mongodb(json, collection_name = 'sp_data', mongo_url = 'mongo
     });
 }
 
-function get_latest_mongodb(collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+function get_latest_mongodb(callback, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
     let last_val = null;
     MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
         if (err) throw err;
         var dbo = db.db("cphdb");
-        last_val = dbo.collection(collection_name).findOne({}, { sort: { $natural: -1 } }, (err, res) => {
+        dbo.collection(collection_name).findOne({}, { sort: { $natural: -1 } }, (err, res) => {
             if (err) throw err;
             console.log('Last event fetched from mongodb');
-
+            callback(err, res)
         })
     });
-    return last_val;
 }
 
-function get_all_mongodb(num_records = 100, natural_order = false, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
-    let last_val = null;
+function get_all_mongodb(callback, num_records = 100, natural_order = false, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
     let ord = -1;
     if (natural_order) {
-        1
+        ord = 1;
     }
     MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
         if (err) throw err;
         var dbo = db.db("cphdb");
-        last_val = dbo.collection(collection_name).find({}, { sort: { $natural: ord } }, (err, res) => {
+        dbo.collection(collection_name).find({}, { sort: { $natural: ord } }).limit(num_records).toArray((err, res) => {
             if (err) throw err;
-            console.log('Last event fetched from mongodb');
-
-        })
+            // console.log('all events fetched from mongodb');
+            // console.log(res);
+            callback(res);
+        });
     });
-    return last_val;
 }
 
 var globals = {
@@ -67,6 +65,19 @@ var globals = {
     scrape_interval_appliance: 86400000, //scrape for new appliances once a day
     first_row: true
 }
+
+app.get('/printdb', (req, res) => {
+    get_all_mongodb((response) => {
+        let str = '';
+        let csv = '';
+        for (let i = 0; i < response.length; i++) {
+            csv += energy_data_to_csv(response[i].energy);
+            csv += appliance_events_to_csv(response[i].appliance);
+            str += csv + '<br>'
+        }
+        res.send('<button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Refresh List</button><br>' + str);
+    });
+});
 
 app.get('/start', (req, res) => {
     let options_init_auth = {
@@ -131,7 +142,7 @@ function parse_locations(body, err) {
 }
 
 app.get('/energy_scrape', (req, res) => {
-    res.send('Done getting appliances. Check terminal window for more data.');
+    res.send('Done getting appliances. Check terminal window for more data.<br> <button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Click for DB</button>');
     re_appliance_scrape();
 });
 
@@ -174,9 +185,11 @@ function re_energy_scrape() {
     request.get(options_get_appliance_events, (err, httpResponse, body) => {
         mongo_row.appliance = appliance_events_req(body, err);
         request.get(options_get_energy_data, (err, httpResponse, body) => {
-            mongo_row.energy = energy_data_req(body, err);
-            mongo_row.srv_time = Date.now();
-            insert_to_mongodb(mongo_row);
+            energy_data_req(body, err, (energy_resp) => {
+                mongo_row.energy = energy_resp;
+                mongo_row.srv_time = Date.now();
+                insert_to_mongodb(mongo_row);
+            });
         });
     });
     setTimeout(re_energy_scrape, globals.scrape_interval_energy);
@@ -233,8 +246,8 @@ function gen_get_energy_data() {
     }
     let to = Date.now();
     options_get_energy_data.url += '?aggregation=1&from=' + from + '&to=' + to;
-    console.log('the energy data request is:');
-    console.log(options_get_energy_data.url);
+    // console.log('the energy data request is:');
+    // console.log(options_get_energy_data.url);
     return options_get_energy_data;
 }
 
@@ -264,14 +277,14 @@ function appliance_events_req(body, err) {
 
     }
     // appliance_events_to_csv(recent_events);    
-    console.log('Appliance Event Fetch Successful:', data);
+    // console.log('Appliance Event Fetch Successful:', data);
     // console.log('Most Recent Event per Appliance csv:', csv);
     delete id_set;
     delete parser;
     return recent_events
 }
 
-function energy_data_req(body, err) {
+function energy_data_req(body, err, callback) {
     /*
     Handle body and error returns from anonymous callback on
     request.get() to recieve energy events, return most recent 
@@ -281,19 +294,20 @@ function energy_data_req(body, err) {
         return console.error('upload failed:', err);
     }
     var data = JSON.parse(body);
-    console.log('energy data req:');
-    console.log(data);
-
-
+    // console.log('energy data req:');
+    // console.log(data);
     let last_data = null;
     if (data.consumptions.length > 0) {
-        return data.consumptions[0]
+        last_data = data.consumptions[0]
+        callback(last_data);
     } else {
-        let last_mongo_data = get_latest_mongodb();
-        console.log(last_mongo_data);
-        return last_mongo_data
+        get_latest_mongodb((error, response) => {
+            // console.log('old data fetch ' + last_data);
+            last_data = response.energy;
+            callback(last_data);
+        });
     }
-    console.log('Energy Use Event Fetch Successful::', data);
+    // console.log('Energy Use Event Fetch Successful::', data);
 }
 
 function appliance_events_to_csv(recent_events, opts = { fields: ['totalPower', 'activePower'], header: false }) {
@@ -320,10 +334,10 @@ function energy_data_to_csv(last_data, opts = { fields: ['timestamp', 'consumpti
         const parser = new Json2csvParser(opts);
         csv = parser.parse(last_data);
         csv = csv.concat(last_data.active.join(), last_data.reactive.join());
-        console.log(csv);
+        // console.log(csv);
         delete parser;
     } catch (err) {
-        console.error(err);
+        // console.error(err);
     }
     return csv
 }
