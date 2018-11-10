@@ -5,51 +5,6 @@ var MongoClient = require('mongodb').MongoClient //to go to csv: https://www.npm
 const port = 3000
 const Json2csvParser = require('json2csv').Parser;
 
-
-const mongo_url = "mongodb://localhost:27017/cphdb";
-
-function insert_to_mongodb(json, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
-    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
-        if (err) throw err;
-        var dbo = db.db("cphdb");
-        dbo.collection(collection_name).insertOne(json, function (err, res) {
-            if (err) throw err;
-            console.log("1 document inserted");
-            db.close();
-        });
-    });
-}
-
-function get_latest_mongodb(callback, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
-    let last_val = null;
-    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
-        if (err) throw err;
-        var dbo = db.db("cphdb");
-        dbo.collection(collection_name).findOne({}, { sort: { $natural: -1 } }, (err, res) => {
-            if (err) throw err;
-            console.log('Last event fetched from mongodb');
-            callback(err, res)
-        })
-    });
-}
-
-function get_all_mongodb(callback, num_records = 100, natural_order = false, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
-    let ord = -1;
-    if (natural_order) {
-        ord = 1;
-    }
-    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
-        if (err) throw err;
-        var dbo = db.db("cphdb");
-        dbo.collection(collection_name).find({}, { sort: { $natural: ord } }).limit(num_records).toArray((err, res) => {
-            if (err) throw err;
-            // console.log('all events fetched from mongodb');
-            // console.log(res);
-            callback(res);
-        });
-    });
-}
-
 var globals = {
     session: {},
     service_locations: {},
@@ -103,6 +58,26 @@ app.get('/start', (req, res) => {
     });
 });
 
+app.get('/auth_success', (req, res) => {
+    request.get(globals.options_get_servicelocation, (err, httpResponse, body) => {
+        if (err) {
+            return console.error('upload failed:', err);
+        }
+        // console.log('Loc Request Successful!  Server responded with:', body);
+        globals.service_locations = JSON.parse(body).serviceLocations;
+        globals.active_location_id = globals.service_locations[globals.service_locations.length - 1].serviceLocationId;
+
+        res.redirect('/energy_scrape')
+    });
+});
+
+app.get('/energy_scrape', (req, res) => {
+    res.send('Done getting appliances. Check terminal window for more data.<br> <button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Click for DB</button>');
+    re_appliance_scrape();
+});
+
+app.listen(port, () => console.log(`Example app listening on port ${port}!`))
+
 function refresh_my_token() {
     let options = {
         url: 'https://app1pub.smappee.net/dev/v1/oauth2/token',
@@ -123,28 +98,6 @@ function refresh_my_token() {
         setTimeout(refresh_my_token, globals.session.expires_in + 10)
     });
 }
-
-app.get('/auth_success', (req, res) => {
-    request.get(globals.options_get_servicelocation, (err, httpResponse, body) => {
-        if (err) {
-            return console.error('upload failed:', err);
-        }
-        // console.log('Loc Request Successful!  Server responded with:', body);
-        globals.service_locations = JSON.parse(body).serviceLocations;
-        globals.active_location_id = globals.service_locations[globals.service_locations.length - 1].serviceLocationId;
-
-        res.redirect('/energy_scrape')
-    });
-});
-
-function parse_locations(body, err) {
-
-}
-
-app.get('/energy_scrape', (req, res) => {
-    res.send('Done getting appliances. Check terminal window for more data.<br> <button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Click for DB</button>');
-    re_appliance_scrape();
-});
 
 function gen_get_appliances() {
     let options = {
@@ -220,7 +173,6 @@ function gen_get_appliance_events() {
     options.url += 'from=' + from + '&to=' + to;
     return options;
 }
-
 
 function gen_get_energy_data() {
     /*
@@ -342,10 +294,47 @@ function energy_data_to_csv(last_data, opts = { fields: ['timestamp', 'consumpti
     return csv
 }
 
-app.listen(port, () => console.log(`Example app listening on port ${port}!`))
+function insert_to_mongodb(json, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
+        if (err) throw err;
+        var dbo = db.db("cphdb");
+        dbo.collection(collection_name).insertOne(json, function (err, res) {
+            if (err) throw err;
+            console.log("1 document inserted");
+            db.close();
+        });
+    });
+}
 
+function get_latest_mongodb(callback, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+    let last_val = null;
+    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
+        if (err) throw err;
+        var dbo = db.db("cphdb");
+        dbo.collection(collection_name).findOne({}, { sort: { $natural: -1 } }, (err, res) => {
+            if (err) throw err;
+            console.log('Last event fetched from mongodb');
+            callback(err, res)
+        })
+    });
+}
 
-
+function get_all_mongodb(callback, num_records = 100, natural_order = false, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+    let ord = -1;
+    if (natural_order) {
+        ord = 1;
+    }
+    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
+        if (err) throw err;
+        var dbo = db.db("cphdb");
+        dbo.collection(collection_name).find({}, { sort: { $natural: ord } }).limit(num_records).toArray((err, res) => {
+            if (err) throw err;
+            // console.log('all events fetched from mongodb');
+            // console.log(res);
+            callback(res);
+        });
+    });
+}
 
 let options_init_auth_honeywell = {
     url: 'https://api.honeywell.com/oauth2/authorize',
