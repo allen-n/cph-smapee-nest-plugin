@@ -25,7 +25,6 @@ var globals = {
     nest: {}
 }
 
-//FIXME: CSV is WRONG but json is CORRECT, issue is likely here or in x_to_csv functions
 app.get('/printdb', (req, res) => {
     get_all_mongodb((response) => {
         let str = '';
@@ -36,6 +35,7 @@ app.get('/printdb', (req, res) => {
             csv += response[i].srv_time + ',';
             csv += energy_data_to_csv(response[i].energy);
             csv += appliance_events_to_csv(response[i].appliance);
+            csv += thermostat_to_csv(response[i].thermostat)
             download_csv += csv + '\r\n';
             str += csv + '<br>'
         }
@@ -425,8 +425,6 @@ function gen_get_thermostat_data() {
     return options;
 }
 
-
-
 function get_thermostat_data(callback = null) {
     /* Generate options JSON for request.get() call to get 
     energy events from Nest API, takes @callback as a param, 
@@ -459,7 +457,7 @@ function thermostat_to_csv(data, thermostat = '2qOT3CZVKfGwpIlxd_-B3gA9J-4dxXeB'
      (ambient humidity (%), ambient temp (F), fan (0=off, 1=on), fan timer duration,
      (min), target temperature (F) */
     let csv = '';
-    let my_tstat = data.devices.thermostats[thermostat];
+    let my_tstat = data[thermostat];
     let mode = null;
     let target_temp = null;
     try {
