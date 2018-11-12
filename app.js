@@ -5,6 +5,7 @@ var MongoClient = require('mongodb').MongoClient //to go to csv: https://www.npm
 const port = 3000
 const Json2csvParser = require('json2csv').Parser;
 const fs = require('fs');
+const https = require('https');
 
 var globals = {
     session: {},
@@ -20,7 +21,8 @@ var globals = {
     appliances: {},
     scrape_interval_appliance: 86400000, //scrape for new appliances once a day
     first_row: true,
-    num_appliances: -1
+    num_appliances: -1,
+    nest: {}
 }
 
 //FIXME: CSV is WRONG but json is CORRECT, issue is likely here or in x_to_csv functions
@@ -38,7 +40,7 @@ app.get('/printdb', (req, res) => {
             str += csv + '<br>'
         }
         var my_html = '<button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
-        <button onclick="location.href = \'http://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br>'
+        <button onclick="location.href = \'http://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br>';
         res.send(my_html + str);
         fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
             if (err) throw err;
@@ -95,7 +97,14 @@ app.get('/energy_scrape', (req, res) => {
     re_appliance_scrape();
 });
 
-app.listen(port, () => console.log(`Example app listening on port ${port}!`))
+// app.listen(port, () => console.log(`Example app listening on port ${port}!`))
+https.createServer({
+    key: fs.readFileSync(__dirname + '/certs/server.key'),
+    cert: fs.readFileSync(__dirname + '/certs/server.cert')
+}, app)
+    .listen(port, function () {
+        console.log(`Example app listening on port ${port}!`)
+    })
 
 function refresh_my_token() {
     let options = {
@@ -383,35 +392,143 @@ let options_init_auth_honeywell = {
 *
 NEST:
 https://console.developers.nest.com/products/7ce5f2f9-1971-4933-b340-c7cba51bb7e5
-
-
-Request from API login page:
-Request URL: https://api.honeywell.com/oauth2/app/login?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com&app=cph-integration
-Request Method: POST
-
-requests after successful login, all made sequentially:
-Request URL: https://api.honeywell.com/oauth2/app/consent?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&app=cph-integration&redirect_uri=http%3A%2F%2Fcyberpoweredhome.com
-Request Method: POST
-
-Request URL: https://api.honeywell.com/oauth2/app/acl?apikey=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&app=cph-integration&redirect_uri=http%3A%2F%2Fcyberpoweredhome.com
-Request Method: GET
-
-Request URL: http://cyberpoweredhome.com/?code=Ly0RxRYb&scope=
-Request Method: GET
  * 
  */
 
-
-
-app.get('/honeywell', (req, res) => {
-    let honeywell_url = 'https://api.honeywell.com/oauth2/authorize?response_type=code&client_id=OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv&redirect_uri=http://cyberpoweredhome.com';
-    res.redirect(honeywell_url);
-    // request.post(honeywell_url, function optionalCallback(err, httpResponse, body) {
-    //     if (err) {
-    //         return console.error('upload failed:', err);
-    //     }        
-    //     // let data = JSON.parse(body);
-    //     console.log('Upload successful!  Server responded with:', body);
-    //     res.send('data')
+app.get('/', (req, res) => {
+    // request.get({uri:'https://home.nest.com/login/oauth2?client_id=7ce5f2f9-1971-4933-b340-c7cba51bb7e5&state=STATE'}, (err, httpResponse, body) => {
+    //     res.send('done!')
     // });
+    res.redirect('https://home.nest.com/login/oauth2?client_id=7ce5f2f9-1971-4933-b340-c7cba51bb7e5&state=STATE');
 });
+
+// https://cyberpoweredhome.com:3000/nest_auth_success?state=STATE&code=ETE32MRN2DQEX25T
+app.get('/nest_auth_success*', (req, res) => {
+    let state = req.query.state;
+    let my_code = req.query.code;
+    var my_html = '<br><button onclick="location.href = \'http://cyberpoweredhome.com:3000/start\';">Click to Start</button>';
+    res.send("Code: " + my_code + ", State: " + state + "<br>Nest Auth Complete, start collecting data." + my_html);
+    let options_init_auth = {
+        url: 'https://api.home.nest.com/oauth2/access_token',
+        form: {
+            client_id: '7ce5f2f9-1971-4933-b340-c7cba51bb7e5',
+            client_secret: 'GuQLCuwXWkrjZg3CxjLTsT27k',
+            grant_type: 'authorization_code',
+            code: my_code
+        }
+    };
+
+    request.post(options_init_auth, (err, httpResponse, body) => {
+        if (err) {
+            return console.error('upload failed:', err);
+        }
+        // console.log('Upload successful!  Server responded with:', body);
+        globals.nest.session = JSON.parse(body);
+        get_thermostat_data();
+        // setTimeout(refresh_my_token_nest, globals.nest.session.expires_in + 10)
+        // res.redirect('/auth_success')
+    });
+});
+
+function get_thermostat_data() {
+    /*
+    Generate options JSON for request.get() call to get 
+    energy events from Nest API
+    */
+    let options = {
+        url: 'https://developer-api.nest.com', //[SERVICELOCATIONID]/events
+        auth: {
+            bearer: null
+        },
+    };
+    options.auth.bearer = globals.nest.session.access_token;
+    let from = '';
+    // return options_get_energy_data;
+    request.get(options, (err, httpResponse, body) => {
+        // console.log(body)
+        let data = JSON.parse(body);
+        let csv = thermostat_to_csv(data);
+        console.log(csv)
+        // console.log(thermostat_to_csv(data))
+    });
+}
+
+function thermostat_to_csv(data, thermostat = '2qOT3CZVKfGwpIlxd_-B3gA9J-4dxXeB') {
+    let csv = '';
+    let my_tstat = data.devices.thermostats[thermostat];
+    let mode = null;
+    let target_temp = null;
+    try {
+        switch (my_tstat.hvac_mode) {
+            case 'heat':
+                mode = 1;
+                target_temp = my_tstat.target_temperature_f;
+                break;
+            case 'cool':
+                mode = 2;
+                target_temp = my_tstat.target_temperature_f;
+                break;
+            case 'heat-cool':
+                mode = 3;
+
+                target_temp = get_target_temp(
+                    my_tstat.ambient_temperature_f,
+                    my_tstat.target_temperature_high_f,
+                    my_tstat.target_temperature_low_f
+                );
+                break;
+            case 'eco':
+                mode = 4;
+                target_temp = get_target_temp(
+                    my_tstat.ambient_temperature_f,
+                    my_tstat.eco_temperature_high_f,
+                    my_tstat.eco_temperature_low_f
+                );
+                break;
+            default:
+                mode = 0;
+                target_temp = my_tstat.ambient_temperature_f;
+                break;
+        }
+        csv = my_tstat.humidity + ',' + my_tstat.ambient_temperature_f + ',';
+        if (my_tstat.fan_timer_active) {
+            csv += '1,' + my_tstat.fan_timer_duration + ',';
+        } else {
+            csv += '0,' + my_tstat.fan_timer_duration + ',';
+        }
+        csv += mode + ',' + target_temp;
+    } catch (error) {
+        throw error;
+    }
+    return csv;
+}
+
+function get_target_temp(ambient_temp, target_high, target_low) {
+    if (ambient_temp > target_high) {
+        return target_high
+    } else if (ambient < target_low) {
+        return target_low
+    } else {
+        return ambient_temp;
+    }
+}
+
+// function refresh_my_token_nest() {
+//     let options = {
+//         url: 'https://api.home.nest.com/oauth2/access_token',
+//         form: {
+//             client_id: '7ce5f2f9-1971-4933-b340-c7cba51bb7e5',
+//             client_secret: 'GuQLCuwXWkrjZg3CxjLTsT27k',
+//             grant_type: 'authorization_code',
+//             code: my_code
+//         }
+//     };
+//     request.post(options, (err, httpResponse, body) => {
+//         if (err) {
+//             return console.error('upload failed:', err);
+//         }
+//         // console.log('Upload successful!  Server responded with:', body);
+//         globals.nest.session = JSON.parse(body);
+//         setTimeout(refresh_my_token_ntest, globals.session.expires_in + 10)
+//     });
+// }
