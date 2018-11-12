@@ -40,7 +40,10 @@ app.get('/printdb', (req, res) => {
             str += csv + '<br>'
         }
         var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
-        <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br>';
+        <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br> \
+        Index, Srv_Time, Timestamp, Total_Consumption, Active[main1, main2, main3, c1,c2,c3,c4,c5,c6], \
+        Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], Appliance[id_0...id_n],humidity(%),ambient_temp(F), \
+        fan(1/0), fan_timer_duration(min), target_temp(F) <br>';
         res.send(my_html + str);
         fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
             if (err) throw err;
@@ -332,7 +335,7 @@ function energy_data_to_csv(last_data, opts = { fields: ['timestamp', 'consumpti
     try {
         const parser = new Json2csvParser(opts);
         csv = parser.parse(last_data);
-        csv = csv.concat(last_data.active.join(), last_data.reactive.join());
+        csv = csv.concat(',', last_data.active.join(), ',', last_data.reactive.join());
         // console.log(csv);
         delete parser;
     } catch (err) {
