@@ -4,6 +4,7 @@ const request = require('request')
 var MongoClient = require('mongodb').MongoClient //to go to csv: https://www.npmjs.com/package/json2csv
 const port = 3000
 const Json2csvParser = require('json2csv').Parser;
+const fs = require('fs');
 
 var globals = {
     session: {},
@@ -18,20 +19,38 @@ var globals = {
     scrape_interval_energy: 30000, // scrape for consumption data every 30 seconds
     appliances: {},
     scrape_interval_appliance: 86400000, //scrape for new appliances once a day
-    first_row: true
+    first_row: true,
+    num_appliances: -1
 }
 
+//FIXME: CSV is WRONG but json is CORRECT, issue is likely here or in x_to_csv functions
 app.get('/printdb', (req, res) => {
     get_all_mongodb((response) => {
         let str = '';
         let csv = '';
+        let download_csv = '';
         for (let i = 0; i < response.length; i++) {
+            csv = i + ',';
+            csv += response[i].srv_time + ',';
             csv += energy_data_to_csv(response[i].energy);
             csv += appliance_events_to_csv(response[i].appliance);
+            download_csv += csv + '\r\n';
             str += csv + '<br>'
         }
-        res.send('<button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Refresh List</button><br>' + str);
+        var my_html = '<button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
+        <button onclick="location.href = \'http://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br>'
+        res.send(my_html + str);
+        fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
+            if (err) throw err;
+            console.log('Saved!');
+        });
     });
+});
+
+app.get('/download_data', (req, res) => {
+    var file = __dirname + '/data/cph_data.csv';
+    res.download(file); // Set disposition and send it.
+    // res.redirect('/printdb')
 });
 
 app.get('/start', (req, res) => {
@@ -120,6 +139,8 @@ function re_appliance_scrape() {
             return console.error('upload failed:', err);
         }
         var data = JSON.parse(body);
+        globals.num_appliances = data.appliances.length;
+        // console.log(data);
         //only do this on first run, timeouts will continue subsequent re_energy_scrape()
         if (globals.first_row) {
             re_energy_scrape(); //Now that we have the total list of devices, look at device events
@@ -214,6 +235,7 @@ function appliance_events_req(body, err) {
         return console.error('upload failed:', err);
     }
     var data = JSON.parse(body);
+
     let id_set = new Set();
     let recent_events = [];
     let csv = '';
@@ -226,13 +248,20 @@ function appliance_events_req(body, err) {
                 recent_events[my_id] = my_obj;
             }
         }
+    }
 
+    let null_event = { totalPower: null, activePower: null };
+    for (let i = 0; i < globals.num_appliances; i++) {
+        if (typeof recent_events[i] == 'undefined') {
+            recent_events[i] = null_event;
+        }
     }
     // appliance_events_to_csv(recent_events);    
     // console.log('Appliance Event Fetch Successful:', data);
     // console.log('Most Recent Event per Appliance csv:', csv);
     delete id_set;
     delete parser;
+
     return recent_events
 }
 
@@ -266,17 +295,23 @@ function appliance_events_to_csv(recent_events, opts = { fields: ['totalPower', 
     let csv = '';
     const parser = new Json2csvParser(opts);
     for (let i = 0; i < recent_events.length; i++) {
-        if (recent_events[i] == null) {
-            csv += ',,';
-        } else {
-            try {
-                csv += parser.parse(recent_events[i]);
-                csv += ',';
-            } catch (err) {
-                console.error(err);
-            }
+        // if (recent_events[i] == null) {
+        //     csv += ',x';
+        // } else {
+        try {
+            csv += ',';
+            csv += parser.parse(recent_events[i]);
+        } catch (err) {
+            console.error(err);
         }
     }
+    // }
+    // if (recent_events.length == 0) {
+    //     for (let i = 0; i < globals.num_appliances; i++) {
+    //         csv += ',xs';
+
+    //     }
+    // }
     return csv;
 }
 
