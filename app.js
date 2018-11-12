@@ -39,8 +39,8 @@ app.get('/printdb', (req, res) => {
             download_csv += csv + '\r\n';
             str += csv + '<br>'
         }
-        var my_html = '<button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
-        <button onclick="location.href = \'http://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br>';
+        var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
+        <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br>';
         res.send(my_html + str);
         fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
             if (err) throw err;
@@ -93,7 +93,7 @@ app.get('/auth_success', (req, res) => {
 });
 
 app.get('/energy_scrape', (req, res) => {
-    res.send('Done getting appliances. Check terminal window for more data.<br> <button onclick="location.href = \'http://cyberpoweredhome.com:3000/printdb\';">Click for DB</button>');
+    res.send('Done getting appliances. Check terminal window for more data.<br> <button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\';">Click for DB</button>');
     re_appliance_scrape();
 });
 
@@ -164,14 +164,18 @@ function re_energy_scrape() {
     */
     let options_get_appliance_events = gen_get_appliance_events();
     let options_get_energy_data = gen_get_energy_data();
+    let options_get_thermostat = gen_get_thermostat_data();
     let mongo_row = {};
     request.get(options_get_appliance_events, (err, httpResponse, body) => {
         mongo_row.appliance = appliance_events_req(body, err);
         request.get(options_get_energy_data, (err, httpResponse, body) => {
             energy_data_req(body, err, (energy_resp) => {
                 mongo_row.energy = energy_resp;
-                mongo_row.srv_time = Date.now();
-                insert_to_mongodb(mongo_row);
+                request.get(options_get_thermostat, (err, httpResponse, body) => {
+                    mongo_row.thermostat = (JSON.parse(body)).devices.thermostats;
+                    mongo_row.srv_time = Date.now();
+                    insert_to_mongodb(mongo_row);
+                });
             });
         });
     });
@@ -232,7 +236,6 @@ function gen_get_energy_data() {
     // console.log(options_get_energy_data.url);
     return options_get_energy_data;
 }
-
 
 function appliance_events_req(body, err) {
     /*
@@ -380,34 +383,14 @@ function get_all_mongodb(callback, num_records = 100, natural_order = false, col
     });
 }
 
-let options_init_auth_honeywell = {
-    url: 'https://api.honeywell.com/oauth2/authorize',
-    form: {
-        grant_type: 'code',
-        client_id: 'OOak9Q3F3CWOYRxzlnhmt9GBMXdAtUwv',
-        redirect_uri: 'http://cyberpoweredhome.com',
-    }
-}
-/**
-*
-NEST:
-https://console.developers.nest.com/products/7ce5f2f9-1971-4933-b340-c7cba51bb7e5
- * 
- */
-
-app.get('/', (req, res) => {
-    // request.get({uri:'https://home.nest.com/login/oauth2?client_id=7ce5f2f9-1971-4933-b340-c7cba51bb7e5&state=STATE'}, (err, httpResponse, body) => {
-    //     res.send('done!')
-    // });
+app.get('/nest', (req, res) => {
     res.redirect('https://home.nest.com/login/oauth2?client_id=7ce5f2f9-1971-4933-b340-c7cba51bb7e5&state=STATE');
 });
 
-// https://cyberpoweredhome.com:3000/nest_auth_success?state=STATE&code=ETE32MRN2DQEX25T
 app.get('/nest_auth_success*', (req, res) => {
     let state = req.query.state;
     let my_code = req.query.code;
-    var my_html = '<br><button onclick="location.href = \'http://cyberpoweredhome.com:3000/start\';">Click to Start</button>';
-    res.send("Code: " + my_code + ", State: " + state + "<br>Nest Auth Complete, start collecting data." + my_html);
+    var my_html = '<br><button onclick="location.href = \'https://cyberpoweredhome.com:3000/start\';">Click to Start</button>';
     let options_init_auth = {
         url: 'https://api.home.nest.com/oauth2/access_token',
         form: {
@@ -424,17 +407,14 @@ app.get('/nest_auth_success*', (req, res) => {
         }
         // console.log('Upload successful!  Server responded with:', body);
         globals.nest.session = JSON.parse(body);
-        get_thermostat_data();
+        res.send("Code: " + my_code + ", State: " + state + "<br>Nest Auth Complete, start collecting data." + my_html);
+        // get_thermostat_data();
         // setTimeout(refresh_my_token_nest, globals.nest.session.expires_in + 10)
         // res.redirect('/auth_success')
     });
 });
 
-function get_thermostat_data() {
-    /*
-    Generate options JSON for request.get() call to get 
-    energy events from Nest API
-    */
+function gen_get_thermostat_data() {
     let options = {
         url: 'https://developer-api.nest.com', //[SERVICELOCATIONID]/events
         auth: {
@@ -442,18 +422,42 @@ function get_thermostat_data() {
         },
     };
     options.auth.bearer = globals.nest.session.access_token;
-    let from = '';
-    // return options_get_energy_data;
+    return options;
+}
+
+
+
+function get_thermostat_data(callback = null) {
+    /* Generate options JSON for request.get() call to get 
+    energy events from Nest API, takes @callback as a param, 
+    callback is an anonymous function that can take @csv as 
+    an argument, which is a csv containing (ambient humidity (%), 
+    ambient temp (F), fan (0=off, 1=on), fan timer duration,
+    (min), target temperature (F)*/
+    let options = {
+        url: 'https://developer-api.nest.com', //[SERVICELOCATIONID]/events
+        auth: {
+            bearer: null
+        },
+    };
+    options.auth.bearer = globals.nest.session.access_token;
     request.get(options, (err, httpResponse, body) => {
         // console.log(body)
         let data = JSON.parse(body);
         let csv = thermostat_to_csv(data);
-        console.log(csv)
+        callback(csv);
+        // console.log(csv)
         // console.log(thermostat_to_csv(data))
     });
 }
 
 function thermostat_to_csv(data, thermostat = '2qOT3CZVKfGwpIlxd_-B3gA9J-4dxXeB') {
+    /* Function to take in the parsed JSON representing a response from
+    the Nest API as @data, and taking an optional @thermostat argument 
+    to specify which thermostat is being monitored. The output is a csv
+    formatted datastring containing:
+     (ambient humidity (%), ambient temp (F), fan (0=off, 1=on), fan timer duration,
+     (min), target temperature (F) */
     let csv = '';
     let my_tstat = data.devices.thermostats[thermostat];
     let mode = null;
@@ -504,6 +508,9 @@ function thermostat_to_csv(data, thermostat = '2qOT3CZVKfGwpIlxd_-B3gA9J-4dxXeB'
 }
 
 function get_target_temp(ambient_temp, target_high, target_low) {
+    /* Helper function for thermostat_to_csv() that takes ambient
+    temperature and target high and low temps to return the target 
+    temperature */
     if (ambient_temp > target_high) {
         return target_high
     } else if (ambient < target_low) {
