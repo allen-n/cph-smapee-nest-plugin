@@ -30,24 +30,30 @@ app.get('/printdb', (req, res) => {
         let str = '';
         let csv = '';
         let download_csv = '';
+        let mins;
+        var date;
         for (let i = 0; i < response.length; i++) {
             csv = i + ',';
             csv += response[i].srv_time + ',';
+            date = new Date(response[i].srv_time);
+            mins = (date.getHours()) * 60 + date.getMinutes();
+            csv += date.getDay() + ',' + mins + ',';
             csv += energy_data_to_csv(response[i].energy);
             csv += appliance_events_to_csv(response[i].appliance);
             csv += thermostat_to_csv(response[i].thermostat)
             download_csv += csv + '\r\n';
             str += csv + '<br>'
         }
+        delete date;
         var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
         <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br> \
-        Index, Srv_Time, Timestamp, Total_Consumption, Active[main1, main2, main3, c1,c2,c3,c4,c5,c6], \
+        Index, Srv_Time,Day of week, mins into day, Timestamp, Total_Consumption, Active[main1, main2, main3, c1,c2,c3,c4,c5,c6], \
         Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], Appliance[id_0...id_n],humidity(%),ambient_temp(F), \
         fan(1/0), fan_timer_duration(min), target_temp(F) <br>';
         res.send(my_html + str);
         fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
             if (err) throw err;
-            console.log('Saved!');
+            // console.log('Saved!');
         });
     });
 });
@@ -100,13 +106,13 @@ app.get('/energy_scrape', (req, res) => {
     re_appliance_scrape();
 });
 
-// app.listen(port, () => console.log(`Example app listening on port ${port}!`))
+// // app.listen(port, () => console.log(`Example app listening on port ${port}!`))
 https.createServer({
     key: fs.readFileSync(__dirname + '/certs/server.key'),
     cert: fs.readFileSync(__dirname + '/certs/server.cert')
 }, app)
     .listen(port, function () {
-        console.log(`Example app listening on port ${port}!`)
+        console.log(`CPH-Interface app listening on port ${port}!`)
     })
 
 function refresh_my_token() {
@@ -175,7 +181,12 @@ function re_energy_scrape() {
             energy_data_req(body, err, (energy_resp) => {
                 mongo_row.energy = energy_resp;
                 request.get(options_get_thermostat, (err, httpResponse, body) => {
-                    mongo_row.thermostat = (JSON.parse(body)).devices.thermostats;
+                    try {
+                        // console.log(body) //FIXME: Simulator isn't generating thermostat events
+                        mongo_row.thermostat = (JSON.parse(body)).devices.thermostats;
+                    } catch (error) {
+                        console.log(error)
+                    }
                     mongo_row.srv_time = Date.now();
                     insert_to_mongodb(mongo_row);
                 });
@@ -290,8 +301,8 @@ function energy_data_req(body, err, callback) {
         return console.error('upload failed:', err);
     }
     var data = JSON.parse(body);
-    // console.log('energy data req:');
-    // console.log(data);
+    console.log('energy data req:');
+    console.log(data);
     let last_data = null;
     if (data.consumptions.length > 0) {
         last_data = data.consumptions[0]
@@ -350,7 +361,7 @@ function insert_to_mongodb(json, collection_name = 'sp_data', mongo_url = 'mongo
         var dbo = db.db("cphdb");
         dbo.collection(collection_name).insertOne(json, function (err, res) {
             if (err) throw err;
-            console.log("1 document inserted");
+            // console.log("1 document inserted");
             db.close();
         });
     });
@@ -363,7 +374,7 @@ function get_latest_mongodb(callback, collection_name = 'sp_data', mongo_url = '
         var dbo = db.db("cphdb");
         dbo.collection(collection_name).findOne({}, { sort: { $natural: -1 } }, (err, res) => {
             if (err) throw err;
-            console.log('Last event fetched from mongodb');
+            // console.log('Last event fetched from mongodb');
             callback(err, res)
         })
     });
@@ -452,7 +463,7 @@ function get_thermostat_data(callback = null) {
     });
 }
 
-function thermostat_to_csv(data, thermostat = '2qOT3CZVKfGwpIlxd_-B3gA9J-4dxXeB') {
+function thermostat_to_csv(data, thermostat = '2qOT3CZVKfGwpIlxd_-B3gA9J-4dxXeB') { //FIXME: put actual thermostat ID
     /* Function to take in the parsed JSON representing a response from
     the Nest API as @data, and taking an optional @thermostat argument 
     to specify which thermostat is being monitored. The output is a csv
