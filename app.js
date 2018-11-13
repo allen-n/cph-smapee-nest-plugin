@@ -39,8 +39,8 @@ app.get('/printdb', (req, res) => {
             mins = (date.getHours()) * 60 + date.getMinutes();
             csv += date.getDay() + ',' + mins + ',';
             csv += energy_data_to_csv(response[i].energy);
+            csv += thermostat_to_csv(response[i].thermostat);
             csv += appliance_events_to_csv(response[i].appliance);
-            csv += thermostat_to_csv(response[i].thermostat)
             download_csv += csv + '\r\n';
             str += csv + '<br>'
         }
@@ -48,8 +48,8 @@ app.get('/printdb', (req, res) => {
         var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
         <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br> \
         Index, Srv_Time,Day of week, mins into day, Timestamp, Total_Consumption, Active[main1, main2, main3, c1,c2,c3,c4,c5,c6], \
-        Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], Appliance[id_0...id_n],humidity(%),ambient_temp(F), \
-        fan(1/0), fan_timer_duration(min), target_temp(F) <br>';
+        Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], humidity(%),ambient_temp(F), \
+        fan(1/0), fan_timer_duration(min), target_temp(F), Appliance[id_0...id_n], <br>';
         res.send(my_html + str);
         fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
             if (err) throw err;
@@ -242,11 +242,12 @@ function gen_get_energy_data() {
         from = Date.now() - 1200000; //for first read, look back 20 minutes to make sure we get an event 
         globals.first_row = false;
     } else {
-        from = Date.now() - globals.scrape_interval_energy;
+        from = Date.now() - 1200000;//360000; //globals.scrape_interval_energy; //check 6 minutes back
     }
     let to = Date.now();
     options_get_energy_data.url += '?aggregation=1&from=' + from + '&to=' + to;
-    // console.log('the energy data request is:');
+    let diff = to - from;
+    console.log('To: ' + to + " From: " + from + " diff: " + diff);
     // console.log(options_get_energy_data.url);
     return options_get_energy_data;
 }
@@ -301,11 +302,11 @@ function energy_data_req(body, err, callback) {
         return console.error('upload failed:', err);
     }
     var data = JSON.parse(body);
-    console.log('energy data req:');
-    console.log(data);
+    // console.log('energy data req:');
+    // console.log(data);
     let last_data = null;
     if (data.consumptions.length > 0) {
-        last_data = data.consumptions[0]
+        last_data = data.consumptions[data.consumptions.length - 1]
         callback(last_data);
     } else {
         get_latest_mongodb((error, response) => {
@@ -430,7 +431,7 @@ app.get('/nest_auth_success*', (req, res) => {
 
 function gen_get_thermostat_data() {
     let options = {
-        url: 'https://developer-api.nest.com', //[SERVICELOCATIONID]/events
+        url: 'https://developer-api.nest.com',
         auth: {
             bearer: null
         },
@@ -463,7 +464,7 @@ function get_thermostat_data(callback = null) {
     });
 }
 
-function thermostat_to_csv(data, thermostat = '2qOT3CZVKfGwpIlxd_-B3gA9J-4dxXeB') { //FIXME: put actual thermostat ID
+function thermostat_to_csv(data, thermostat = '8OpZIwv1HR35Zb0XSJM8QwA9J-4dxXeB') {
     /* Function to take in the parsed JSON representing a response from
     the Nest API as @data, and taking an optional @thermostat argument 
     to specify which thermostat is being monitored. The output is a csv
@@ -471,6 +472,7 @@ function thermostat_to_csv(data, thermostat = '2qOT3CZVKfGwpIlxd_-B3gA9J-4dxXeB'
      (ambient humidity (%), ambient temp (F), fan (0=off, 1=on), fan timer duration,
      (min), target temperature (F) */
     let csv = '';
+    // console.log(data);
     let my_tstat = data[thermostat];
     let mode = null;
     let target_temp = null;
