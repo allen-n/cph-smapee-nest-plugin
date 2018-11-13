@@ -381,7 +381,7 @@ function get_latest_mongodb(callback, collection_name = 'sp_data', mongo_url = '
     });
 }
 
-function get_all_mongodb(callback, num_records = 100, natural_order = false, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+function get_all_mongodb(callback, num_records = 100000, natural_order = false, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
     let ord = -1;
     if (natural_order) {
         ord = 1;
