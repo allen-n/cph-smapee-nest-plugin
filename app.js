@@ -32,8 +32,8 @@ app.get('/printdb', (req, res) => {
         let download_csv = '';
         let mins;
         var date;
-        let prev_events = Array(globals.num_appliances).fill(0);
-        for (let i = 0; i < response.length; i++) {
+        var prev_events = Array(globals.num_appliances).fill(0);
+        for (let i = response.length - 1; i >= 0; i--) {
             csv = i + ',';
             csv += response[i].srv_time + ',';
             date = new Date(response[i].srv_time);
