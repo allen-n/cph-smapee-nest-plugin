@@ -32,6 +32,7 @@ app.get('/printdb', (req, res) => {
         let download_csv = '';
         let mins;
         var date;
+        let prev_events = Array(globals.num_appliances).fill(0);
         for (let i = 0; i < response.length; i++) {
             csv = i + ',';
             csv += response[i].srv_time + ',';
@@ -40,7 +41,8 @@ app.get('/printdb', (req, res) => {
             csv += date.getDay() + ',' + mins + ',';
             csv += energy_data_to_csv(response[i].energy);
             csv += thermostat_to_csv(response[i].thermostat);
-            csv += appliance_events_to_csv(response[i].appliance);
+            prev_events = appliance_events_to_csv(response[i].appliance, prev_events);
+            csv += ',' + prev_events.toString();
             download_csv += csv + '\r\n';
             str += csv + '<br>'
         }
@@ -318,28 +320,55 @@ function energy_data_req(body, err, callback) {
     // console.log('Energy Use Event Fetch Successful::', data);
 }
 
-function appliance_events_to_csv(recent_events, opts = { fields: ['totalPower', 'activePower'], header: false }) {
+// function appliance_events_to_csv(recent_events, opts = { fields: ['totalPower', 'activePower'], header: false }) {
+//     let csv = '';
+//     const parser = new Json2csvParser(opts);
+//     for (let i = 0; i < recent_events.length; i++) {
+//         // if (recent_events[i] == null) {
+//         //     csv += ',x';
+//         // } else {
+//         try {
+//             csv += ',';
+//             csv += parser.parse(recent_events[i]);
+//         } catch (err) {
+//             console.error(err);
+//         }
+//     }
+//     // }
+//     // if (recent_events.length == 0) {
+//     //     for (let i = 0; i < globals.num_appliances; i++) {
+//     //         csv += ',xs';
+
+//     //     }
+//     // }
+//     return csv;
+// }
+
+function appliance_events_to_csv(recent_events, prev_events) {
     let csv = '';
-    const parser = new Json2csvParser(opts);
+    var sign;
+    var out = [];
     for (let i = 0; i < recent_events.length; i++) {
-        // if (recent_events[i] == null) {
-        //     csv += ',x';
-        // } else {
         try {
-            csv += ',';
-            csv += parser.parse(recent_events[i]);
+            sign = recent_events[i].activePower;
+            if (sign != null) {
+                if (sign > 0) {
+                    out[i] = 1;
+                } else {
+                    out[i] = -1;
+                }
+            } else {
+                out[i] = prev_events[i];
+            }
         } catch (err) {
             console.error(err);
         }
     }
-    // }
-    // if (recent_events.length == 0) {
-    //     for (let i = 0; i < globals.num_appliances; i++) {
-    //         csv += ',xs';
-
-    //     }
-    // }
-    return csv;
+    return out;
+    // console.log(prev_events);
+    // console.log(out);
+    // console.log(out.toString())
+    // return csv;
 }
 
 function energy_data_to_csv(last_data, opts = { fields: ['timestamp', 'consumption'], header: false }) {
