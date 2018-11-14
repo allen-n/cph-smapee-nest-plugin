@@ -14,7 +14,9 @@
   "license": "ISC",
   "homepage": "https://bitbucket.org/allen-n/cph-interface#readme",
   "dependencies": {
+    "@tensorflow/tfjs-node": "^0.1.20",
     "express": "^4.16.4",
+    "fast-csv": "^2.4.1",
     "https": "^1.0.0",
     "json2csv": "^4.3.0",
     "mongodb": "^3.1.9",

@@ -46,10 +46,10 @@ function appliance_events_to_csv(recent_events, prev_events) {
             console.error(err);
         }
     }
-    // return out;
-    console.log(prev_events);
-    console.log(out);
-    console.log(out.toString())
+    return out;
+    // console.log(prev_events);
+    // console.log(out);
+    // console.log(out.toString())
     // return csv;
 }
 
