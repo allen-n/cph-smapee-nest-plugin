@@ -60,16 +60,39 @@ function arr_to_tensor(arr) {
   // making tensor
   const shape = [arr.length, arr[0].length];
   const tensor = tf.tensor(arr, shape);
-  tensor.print();
+  // tensor.print();
+  return tensor;
+}
+
+async function gen_model(xs, ys, shape) {
+  let x = arr_to_tensor(xs);
+  let y = arr_to_tensor(ys);
+  const model = tf.sequential()
+  console.log(shape)
+  model.add(tf.layers.dense({ units: 1, inputShape: shape }));
+  model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
+
+  // Generate some synthetic data for training.
+  // const xs = tf.tensor2d([[1], [2], [3], [4]], [4, 1]);
+  // const ys = tf.tensor2d([[1], [3], [5], [7]], [4, 1]);
+
+  // Train model with fit().
+  await model.fit(x, y, { epochs: 10 }).catch((error) =>{
+    console.log(error)
+  });
+  console.log("done!")
+
+  // Run inference with predict().
+  // model.predict(tf.tensor2d([[5]], [1, 1])).print();
 }
 // https://js.tensorflow.org/tutorials/tfjs-layers-for-keras-users.html
+
 csv_to_arr((arr) => {
   let xs, ys;
   [xs, ys] = arr_to_xy(arr);
+  gen_model(xs, ys, [xs[0].length]);
   // console.log(xs)
-  arr_to_tensor(xs);
-  arr_to_tensor(ys);
-  // var model = tf.sequential()
+
 });
 
 
