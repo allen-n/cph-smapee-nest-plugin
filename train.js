@@ -45,12 +45,20 @@ function arr_to_xy(arr, indices = { not_x: [0, 1, 4, 28], y: [28] }) {
   return [x, y];
 }
 
+
 function zero_pad(arr) {
   // zero padding
-  const row_len = arr[arr.length - 1].length;
+  var row_len = 0; // arr[arr.length - 1].length;
+  arr.forEach(element => {
+    if (element.length > row_len) {
+      row_len = element.length
+    }
+  });
   for (let i = 0; i < arr.length; i++) {
-    while (arr[i].length < row_len) {
-      arr[i].push(0);
+    for (let j = 0; j < row_len; j++) {
+      if (arr[i][j] == '' || typeof arr[i][j] == 'undefined') {
+        arr[i][j] = '0';
+      }
     }
   }
   return arr;
@@ -77,7 +85,7 @@ async function gen_model(xs, ys, shape) {
   // const ys = tf.tensor2d([[1], [3], [5], [7]], [4, 1]);
 
   // Train model with fit().
-  await model.fit(x, y, { epochs: 10 }).catch((error) =>{
+  await model.fit(x, y, { epochs: 10 }).catch((error) => {
     console.log(error)
   });
   console.log("done!")
