@@ -353,9 +353,9 @@ function appliance_events_to_csv(recent_events, prev_events) {
             sign = recent_events[i].activePower;
             if (sign != null) {
                 if (sign > 0) {
-                    out[i] = 1;
+                    out[i] = 2; //changed from (-1,1) to (1,2) for (off, on) to make neural net training easier
                 } else {
-                    out[i] = -1;
+                    out[i] = 1;
                 }
             } else {
                 out[i] = prev_events[i];
