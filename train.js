@@ -4,6 +4,8 @@ var csv = require("fast-csv");
 // Load the binding:
 require('@tensorflow/tfjs-node');  // Use '@tensorflow/tfjs-node-gpu' if running with GPU.
 
+// TODO: modify to call classifer.py with command line args to classify incoming point
+
 function csv_to_arr(callback, path_to_csv = '/data/cph_data.csv') {
   var data_obj = [];
   var i = 0;
@@ -79,10 +81,6 @@ async function gen_model(xs, ys, shape) {
   console.log(shape)
   model.add(tf.layers.dense({ units: 1, inputShape: shape }));
   model.compile({ optimizer: 'sgd', loss: 'meanSquaredError' });
-
-  // Generate some synthetic data for training.
-  // const xs = tf.tensor2d([[1], [2], [3], [4]], [4, 1]);
-  // const ys = tf.tensor2d([[1], [3], [5], [7]], [4, 1]);
 
   // Train model with fit().
   await model.fit(x, y, { epochs: 10 }).catch((error) => {

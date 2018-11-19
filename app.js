@@ -7,6 +7,8 @@ const Json2csvParser = require('json2csv').Parser;
 const fs = require('fs');
 const https = require('https');
 
+const { spawn } = require('child_process');
+
 var globals = {
     session: {},
     service_locations: {},
@@ -22,7 +24,8 @@ var globals = {
     scrape_interval_appliance: 86400000, //scrape for new appliances once a day
     first_row: true,
     num_appliances: -1,
-    nest: {}
+    nest: {},
+    prev_events: {}
 }
 
 app.get('/printdb', (req, res) => {
@@ -30,22 +33,16 @@ app.get('/printdb', (req, res) => {
         let str = '';
         let csv = '';
         let download_csv = '';
-        let mins;
-        var date;
+
         var prev_events = Array(globals.num_appliances).fill(0);
         for (let i = response.length - 1; i >= 0; i--) {
             csv = i + ',';
-            csv += response[i].srv_time + ',';
-            date = new Date(response[i].srv_time);
-            mins = (date.getHours()) * 60 + date.getMinutes();
-            csv += date.getDay() + ',' + mins + ',';
-            csv += energy_data_to_csv(response[i].energy);
-            csv += thermostat_to_csv(response[i].thermostat);
-            prev_events = appliance_events_to_csv(response[i].appliance, prev_events);
-            csv += ',' + prev_events.toString();
+            [csv, prev_events] = row_to_csv(response[i], csv, prev_events);
             download_csv += csv + '\r\n';
             str += csv + '<br>'
+            // res.write(csv + '<br>')
         }
+        globals.prev_events = prev_events;
         delete date;
         var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
         <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br> \
@@ -55,10 +52,24 @@ app.get('/printdb', (req, res) => {
         res.send(my_html + str);
         fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
             if (err) throw err;
-            // console.log('Saved!');
+            
         });
     });
 });
+
+function row_to_csv(response, csv, prev_events) {
+    var date;
+    let mins;
+    csv += response.srv_time + ',';
+    date = new Date(response.srv_time);
+    mins = (date.getHours()) * 60 + date.getMinutes();
+    csv += date.getDay() + ',' + mins + ',';
+    csv += energy_data_to_csv(response.energy);
+    csv += thermostat_to_csv(response.thermostat);
+    prev_events = appliance_events_to_csv(response.appliance, prev_events);
+    csv += ',' + prev_events.toString();
+    return [csv, prev_events]
+}
 
 app.get('/download_data', (req, res) => {
     var file = __dirname + '/data/cph_data.csv';
@@ -82,7 +93,7 @@ app.get('/start', (req, res) => {
         if (err) {
             return console.error('upload failed:', err);
         }
-        // console.log('Upload successful!  Server responded with:', body);
+        
         globals.session = JSON.parse(body);
         globals.options_get_servicelocation.auth.bearer = globals.session.access_token;
         setTimeout(refresh_my_token, globals.session.expires_in + 10)
@@ -95,7 +106,7 @@ app.get('/auth_success', (req, res) => {
         if (err) {
             return console.error('upload failed:', err);
         }
-        // console.log('Loc Request Successful!  Server responded with:', body);
+        
         globals.service_locations = JSON.parse(body).serviceLocations;
         globals.active_location_id = globals.service_locations[globals.service_locations.length - 1].serviceLocationId;
 
@@ -108,7 +119,6 @@ app.get('/energy_scrape', (req, res) => {
     re_appliance_scrape();
 });
 
-// // app.listen(port, () => console.log(`Example app listening on port ${port}!`))
 https.createServer({
     key: fs.readFileSync(__dirname + '/certs/server.key'),
     cert: fs.readFileSync(__dirname + '/certs/server.cert')
@@ -131,7 +141,7 @@ function refresh_my_token() {
         if (err) {
             return console.error('upload failed:', err);
         }
-        // console.log('Upload successful!  Server responded with:', body);
+        
         globals.session = JSON.parse(body);
         globals.options_get_servicelocation.auth.bearer = globals.session.access_token;
         setTimeout(refresh_my_token, globals.session.expires_in + 10)
@@ -165,7 +175,11 @@ function re_appliance_scrape() {
         if (globals.first_row) {
             re_energy_scrape(); //Now that we have the total list of devices, look at device events
         }
-    });
+        py_train_all((data) => {
+            console.log('training complete, data:')
+            console.log(data);
+        });
+    });  
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
 
@@ -184,8 +198,16 @@ function re_energy_scrape() {
                 mongo_row.energy = energy_resp;
                 request.get(options_get_thermostat, (err, httpResponse, body) => {
                     try {
-                        // console.log(body) //FIXME: Simulator isn't generating thermostat events
                         mongo_row.thermostat = (JSON.parse(body)).devices.thermostats;
+                        let data_str = row_to_csv(mongo_row, '', globals.prev_events);
+                        py_test_all(data_str[0], (output) => {
+                            console.log('py_test_all fired!')
+                            fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
+                                if (err) throw err;
+                                // console.log('Saved!');
+                            });
+                        });
+
                     } catch (error) {
                         console.log(error)
                     }
@@ -248,8 +270,8 @@ function gen_get_energy_data() {
     }
     let to = Date.now();
     options_get_energy_data.url += '?aggregation=1&from=' + from + '&to=' + to;
-    let diff = to - from;
-    console.log('To: ' + to + " From: " + from + " diff: " + diff);
+    // let diff = to - from;
+    // console.log('To: ' + to + " From: " + from + " diff: " + diff);
     // console.log(options_get_energy_data.url);
     return options_get_energy_data;
 }
@@ -349,19 +371,21 @@ function appliance_events_to_csv(recent_events, prev_events) {
     var sign;
     var out = [];
     for (let i = 0; i < recent_events.length; i++) {
-        try {
-            sign = recent_events[i].activePower;
-            if (sign != null) {
-                if (sign > 0) {
-                    out[i] = 2; //changed from (-1,1) to (1,2) for (off, on) to make neural net training easier
+        if (recent_events[i] != null) {
+            try {
+                sign = recent_events[i].activePower;
+                if (sign != null) {
+                    if (sign > 0) {
+                        out[i] = 2; //changed from (-1,1) to (1,2) for (off, on) to make neural net training easier
+                    } else {
+                        out[i] = 1;
+                    }
                 } else {
-                    out[i] = 1;
+                    out[i] = prev_events[i];
                 }
-            } else {
-                out[i] = prev_events[i];
+            } catch (err) {
+                console.error(err);
             }
-        } catch (err) {
-            console.error(err);
         }
     }
     return out;
@@ -556,29 +580,58 @@ function get_target_temp(ambient_temp, target_high, target_low) {
     temperature */
     if (ambient_temp > target_high) {
         return target_high
-    } else if (ambient < target_low) {
+    } else if (ambient_temp < target_low) {
         return target_low
     } else {
         return ambient_temp;
     }
 }
 
-// function refresh_my_token_nest() {
-//     let options = {
-//         url: 'https://api.home.nest.com/oauth2/access_token',
-//         form: {
-//             client_id: '7ce5f2f9-1971-4933-b340-c7cba51bb7e5',
-//             client_secret: 'GuQLCuwXWkrjZg3CxjLTsT27k',
-//             grant_type: 'authorization_code',
-//             code: my_code
-//         }
-//     };
-//     request.post(options, (err, httpResponse, body) => {
-//         if (err) {
-//             return console.error('upload failed:', err);
-//         }
-//         // console.log('Upload successful!  Server responded with:', body);
-//         globals.nest.session = JSON.parse(body);
-//         setTimeout(refresh_my_token_ntest, globals.session.expires_in + 10)
-//     });
-// }
+function py_test_all(data_str, callback) {
+    data_str = data_str.toString();
+    const pyProg = spawn('python', [__dirname + '\\classifier.py', 'test-all', data_str]);
+    console.log('py_test_inner')
+    pyProg.stderr.on('data', (err) => {
+        pyProg.kill()
+        console.log('err in py_test')
+        console.log(err)
+    })
+
+    pyProg.stdout.on("data", function (data) {
+        callback(data)
+        // console.log(data.toString());
+        // res.write(data);
+        // res.end('end');
+        pyProg.kill()
+    });
+
+    pyProg.on("close", (number, signal, string) => {
+        // console.log(number, signal, string)
+        // res.end('end2')
+        pyProg.kill()
+    })
+}
+
+function py_train_all(callback) {
+    const pyProg = spawn('python', [__dirname + '\\classifier.py', 'train-all']);
+    console.log('py_train_inner')
+    pyProg.stderr.on('data', (err) => {
+        pyProg.kill()
+        console.log('err in py_train')
+        console.log(err)
+    })
+
+    pyProg.stdout.on("data", function (data) {
+        callback(data)
+        // console.log(data.toString());
+        // res.write(data);
+        // res.end('end');
+        pyProg.kill()
+    });
+
+    pyProg.on("close", (number, signal, string) => {
+        // console.log(number, signal, string)
+        // res.end('end2')
+        pyProg.kill()
+    })
+}
