@@ -49,16 +49,16 @@ def test_model(data, model_path):
 
 def train_bayes():
     my_path = os.path.abspath(os.path.dirname(__file__))
-    data_path = my_path + r"\data\cph_data.csv"
-    model_path = my_path + r"\models\cnb.sav"
+    data_path = my_path + r"/data/cph_data.csv"
+    model_path = my_path + r"/models/cnb.sav"
     clf = train_model(data_path, model_path, GaussianNB)
     return clf
 
 
 def train_decision_tree():
     my_path = os.path.abspath(os.path.dirname(__file__))
-    data_path = my_path + r"\data\cph_data.csv"
-    model_path = my_path + r"\models\clf.sav"
+    data_path = my_path + r"/data/cph_data.csv"
+    model_path = my_path + r"/models/clf.sav"
     clf = train_model(data_path, model_path, tree.DecisionTreeClassifier)
     return clf
 
@@ -66,14 +66,14 @@ def train_decision_tree():
 def test_tree(data):
     # data = ['7336,1.54209E+12,1,1302,1.54209E+12,113.9,70.7,42.9,0,2.5,0.3,21.9,0.4,3.7,18.4,46.5,15.2,0,2.7,0.6,9.2,0.4,6,6.93,72,0,15,1,68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0']
     my_path = os.path.abspath(os.path.dirname(__file__))
-    model_path = my_path + r"\models\clf.sav"
+    model_path = my_path + r"/models/clf.sav"
     out = test_model(data, model_path)
     return out
 
 
 def test_bayes(data):
     my_path = os.path.abspath(os.path.dirname(__file__))
-    model_path = my_path + r"\models\cnb.sav"
+    model_path = my_path + r"/models/cnb.sav"
     out = test_model(data, model_path)
     return out
 
@@ -116,7 +116,7 @@ if __name__ == "__main__":
     # print (sys.argv)
     # [x_cols, y_cols] = get_cols()
 
-    # path = my_path + r"\data\cph_test.csv"
+    # path = my_path + r"/data/cph_test.csv"
 
     # X_test = pd.read_csv(path, usecols=x_cols)
     # Y_test = pd.read_csv(path, usecols=y_cols)
@@ -124,5 +124,5 @@ if __name__ == "__main__":
     # # print(X_test)
     # prediction = pd.Series(clf.predict(X_test))
     # output = pd.DataFrame(Y_test, prediction)
-    # output.to_csv(my_path + r"\data\output.csv", header=['Predictions'])
+    # output.to_csv(my_path + r"/data/output.csv", header=['Predictions'])
     # print(output)

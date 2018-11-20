@@ -33,14 +33,28 @@ app.get('/printdb', (req, res) => {
         let str = '';
         let csv = '';
         let download_csv = '';
+        let csv_arr = [];
+        let max_row = -1;
 
         var prev_events = Array(globals.num_appliances).fill(0);
         for (let i = response.length - 1; i >= 0; i--) {
             csv = i + ',';
             [csv, prev_events] = row_to_csv(response[i], csv, prev_events);
-            download_csv += csv + '\r\n';
+            csv_arr[i] = csv.split(',');
+            if (csv_arr[i].length > max_row) {
+                max_row = csv_arr[i].length
+            }
+            // download_csv += csv + '\r\n';
             str += csv + '<br>'
             // res.write(csv + '<br>')
+        }
+        for (let i = 0; i < csv_arr.length; i++) {
+            for (let j = 0; j < max_row; j++) {
+                if (csv_arr[i][j] == '' || typeof csv_arr[i][j] == 'undefined') {
+                    csv_arr[i][j] = '0';
+                }
+            }
+            download_csv += csv_arr[i].join(',') + '\r\n'
         }
         globals.prev_events = prev_events;
         delete date;
@@ -52,7 +66,7 @@ app.get('/printdb', (req, res) => {
         res.send(my_html + str);
         fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
             if (err) throw err;
-            
+
         });
     });
 });
@@ -93,7 +107,7 @@ app.get('/start', (req, res) => {
         if (err) {
             return console.error('upload failed:', err);
         }
-        
+
         globals.session = JSON.parse(body);
         globals.options_get_servicelocation.auth.bearer = globals.session.access_token;
         setTimeout(refresh_my_token, globals.session.expires_in + 10)
@@ -106,7 +120,7 @@ app.get('/auth_success', (req, res) => {
         if (err) {
             return console.error('upload failed:', err);
         }
-        
+
         globals.service_locations = JSON.parse(body).serviceLocations;
         globals.active_location_id = globals.service_locations[globals.service_locations.length - 1].serviceLocationId;
 
@@ -141,7 +155,7 @@ function refresh_my_token() {
         if (err) {
             return console.error('upload failed:', err);
         }
-        
+
         globals.session = JSON.parse(body);
         globals.options_get_servicelocation.auth.bearer = globals.session.access_token;
         setTimeout(refresh_my_token, globals.session.expires_in + 10)
@@ -179,7 +193,7 @@ function re_appliance_scrape() {
             console.log('training complete, data:')
             console.log(data);
         });
-    });  
+    });
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
 
@@ -200,7 +214,8 @@ function re_energy_scrape() {
                     try {
                         mongo_row.thermostat = (JSON.parse(body)).devices.thermostats;
                         let data_str = row_to_csv(mongo_row, '', globals.prev_events);
-                        py_test_all(data_str[0], (output) => {
+                        data_str = '-1,' + data_str[0];
+                        py_test_all(data_str, (output) => {
                             console.log('py_test_all fired!')
                             fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
                                 if (err) throw err;
@@ -589,16 +604,16 @@ function get_target_temp(ambient_temp, target_high, target_low) {
 
 function py_test_all(data_str, callback) {
     data_str = data_str.toString();
-    const pyProg = spawn('python', [__dirname + '\\classifier.py', 'test-all', data_str]);
+    const pyProg = spawn('python', [__dirname + '/classifier.py', 'test-all', data_str]);
     console.log('py_test_inner')
     pyProg.stderr.on('data', (err) => {
         pyProg.kill()
         console.log('err in py_test')
-        console.log(err)
+        console.log(err.toString())
     })
 
     pyProg.stdout.on("data", function (data) {
-        callback(data)
+        callback(data.toString())
         // console.log(data.toString());
         // res.write(data);
         // res.end('end');
@@ -613,16 +628,16 @@ function py_test_all(data_str, callback) {
 }
 
 function py_train_all(callback) {
-    const pyProg = spawn('python', [__dirname + '\\classifier.py', 'train-all']);
+    const pyProg = spawn('python', [__dirname + '/classifier.py', 'train-all']);
     console.log('py_train_inner')
     pyProg.stderr.on('data', (err) => {
         pyProg.kill()
         console.log('err in py_train')
-        console.log(err)
+        console.log(err.toString())
     })
 
     pyProg.stdout.on("data", function (data) {
-        callback(data)
+        callback(data.toString())
         // console.log(data.toString());
         // res.write(data);
         // res.end('end');
