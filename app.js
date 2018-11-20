@@ -189,10 +189,10 @@ function re_appliance_scrape() {
         if (globals.first_row) {
             re_energy_scrape(); //Now that we have the total list of devices, look at device events
         }
-        py_train_all((data) => {
-            console.log('training complete, data:')
-            console.log(data);
-        });
+        // py_train_all((data) => {
+        //     console.log('training complete, data:')
+        //     console.log(data);
+        // });
     });
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
@@ -213,21 +213,21 @@ function re_energy_scrape() {
                 request.get(options_get_thermostat, (err, httpResponse, body) => {
                     try {
                         mongo_row.thermostat = (JSON.parse(body)).devices.thermostats;
-                        let data_str = row_to_csv(mongo_row, '', globals.prev_events);
-                        data_str = '-1,' + data_str[0];
-                        py_test_all(data_str, (output) => {
-                            console.log('py_test_all fired!')
-                            fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
-                                if (err) throw err;
-                                // console.log('Saved!');
-                            });
-                        });
-
                     } catch (error) {
                         console.log(error)
                     }
                     mongo_row.srv_time = Date.now();
                     insert_to_mongodb(mongo_row);
+                    let data_str = row_to_csv(mongo_row, '', globals.prev_events);
+                    data_str = '-1,' + data_str[0];
+                    // py_test_all(data_str, (output) => {
+                    //     console.log('py_test_all fired!')
+                    //     output = Date.now() + ',' + output; // FIXME: Problem is here somewhere!
+                    //     fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
+                    //         if (err) throw err;
+                    //         // console.log('Saved!');
+                    //     });
+                    // });
                 });
             });
         });
@@ -604,11 +604,10 @@ function get_target_temp(ambient_temp, target_high, target_low) {
 
 function py_test_all(data_str, callback) {
     data_str = data_str.toString();
+    console.log(data_str)
     const pyProg = spawn('python', [__dirname + '/classifier.py', 'test-all', data_str]);
-    console.log('py_test_inner')
     pyProg.stderr.on('data', (err) => {
         pyProg.kill()
-        console.log('err in py_test')
         console.log(err.toString())
     })
 
@@ -629,10 +628,8 @@ function py_test_all(data_str, callback) {
 
 function py_train_all(callback) {
     const pyProg = spawn('python', [__dirname + '/classifier.py', 'train-all']);
-    console.log('py_train_inner')
     pyProg.stderr.on('data', (err) => {
         pyProg.kill()
-        console.log('err in py_train')
         console.log(err.toString())
     })
 
