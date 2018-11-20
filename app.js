@@ -58,10 +58,11 @@ app.get('/printdb', (req, res) => {
         }
         globals.prev_events = prev_events;
         delete date;
-        var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\';">Refresh List</button> \
+        var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\'">Refresh List</button> \
         <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br> \
-        Index, Srv_Time,Day of week, mins into day, Timestamp, Total_Consumption, Active[main1, main2, main3, c1,c2,c3,c4,c5,c6], \
-        Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], humidity(%),ambient_temp(F), \
+        <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_ml\';">Download ML Data</button><br> \
+        Index, Srv_Time,Day of week, mins into day, Timestamp, Total_Consumption, Active[main1, main2, main3, \
+        c1,c2,c3,c4,c5,c6], Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], humidity(%),ambient_temp(F), \
         fan(1/0), fan_timer_duration(min), target_temp(F), Appliance[id_0...id_n], <br>';
         res.send(my_html + str);
         fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
@@ -87,6 +88,12 @@ function row_to_csv(response, csv, prev_events) {
 
 app.get('/download_data', (req, res) => {
     var file = __dirname + '/data/cph_data.csv';
+    res.download(file); // Set disposition and send it.
+    // res.redirect('/printdb')
+});
+
+app.get('/download_ml', (req, res) => {
+    var file = __dirname + '/data/ML_predictions.csv';
     res.download(file); // Set disposition and send it.
     // res.redirect('/printdb')
 });
@@ -192,7 +199,7 @@ function re_appliance_scrape() {
         }
         py_train_all((data) => {
             let date = Date.now()
-            console.log('Model Retrained at:' + date.toString() )
+            console.log('Model Retrained at:' + date.toString())
             // console.log(data);
         });
     });
