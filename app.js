@@ -81,7 +81,7 @@ function row_to_csv(response, csv, prev_events) {
     csv += energy_data_to_csv(response.energy);
     csv += thermostat_to_csv(response.thermostat);
     prev_events = appliance_events_to_csv(response.appliance, prev_events);
-    csv += ',' + prev_events.toString();
+    csv += ',' + prev_events.join(',');
     return [csv, prev_events]
 }
 
@@ -187,12 +187,14 @@ function re_appliance_scrape() {
         // console.log(data);
         //only do this on first run, timeouts will continue subsequent re_energy_scrape()
         if (globals.first_row) {
+            globals.prev_events = Array(globals.num_appliances).fill(0);
             re_energy_scrape(); //Now that we have the total list of devices, look at device events
         }
-        // py_train_all((data) => {
-        //     console.log('training complete, data:')
-        //     console.log(data);
-        // });
+        py_train_all((data) => {
+            let date = Date.now()
+            console.log('Model Retrained at:' + date.toString() )
+            // console.log(data);
+        });
     });
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
@@ -220,19 +222,31 @@ function re_energy_scrape() {
                     insert_to_mongodb(mongo_row);
                     let data_str = row_to_csv(mongo_row, '', globals.prev_events);
                     data_str = '-1,' + data_str[0];
-                    // py_test_all(data_str, (output) => {
-                    //     console.log('py_test_all fired!')
-                    //     output = Date.now() + ',' + output; // FIXME: Problem is here somewhere!
-                    //     fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
-                    //         if (err) throw err;
-                    //         // console.log('Saved!');
-                    //     });
-                    // });
+                    data_str = remove_csv_blanks(data_str);
+                    py_test_all(data_str, (output) => {
+                        // console.log('py_test_all fired!')
+                        output = mongo_row.srv_time + ',' + output; // FIXME: Problem is here somewhere!
+                        fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
+                            if (err) throw err;
+                            // console.log('Saved!');
+                        });
+                    });
                 });
             });
         });
     });
     setTimeout(re_energy_scrape, globals.scrape_interval_energy);
+}
+
+function remove_csv_blanks(csv) {
+    let arr = csv.split(',')
+    for (let i = 0; i < arr.length; i++) {
+        // console.log(arr[i])
+        if (arr[i] == '') {
+            arr[i] = 0;
+        }
+    }
+    return arr.join(',')
 }
 
 function gen_get_appliance_events() {
@@ -386,21 +400,19 @@ function appliance_events_to_csv(recent_events, prev_events) {
     var sign;
     var out = [];
     for (let i = 0; i < recent_events.length; i++) {
-        if (recent_events[i] != null) {
-            try {
-                sign = recent_events[i].activePower;
-                if (sign != null) {
-                    if (sign > 0) {
-                        out[i] = 2; //changed from (-1,1) to (1,2) for (off, on) to make neural net training easier
-                    } else {
-                        out[i] = 1;
-                    }
+        if (recent_events[i] != null && recent_events[i] != '') {
+            sign = recent_events[i].activePower;
+            if (sign != null) {
+                if (sign > 0) {
+                    out[i] = 2; //changed from (-1,1) to (1,2) for (off, on) to make neural net training easier
                 } else {
-                    out[i] = prev_events[i];
+                    out[i] = 1;
                 }
-            } catch (err) {
-                console.error(err);
+            } else {
+                out[i] = prev_events[i];
             }
+        } else {
+            recent_events[i] = 0;
         }
     }
     return out;
@@ -604,7 +616,6 @@ function get_target_temp(ambient_temp, target_high, target_low) {
 
 function py_test_all(data_str, callback) {
     data_str = data_str.toString();
-    console.log(data_str)
     const pyProg = spawn('python', [__dirname + '/classifier.py', 'test-all', data_str]);
     pyProg.stderr.on('data', (err) => {
         pyProg.kill()
