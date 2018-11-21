@@ -5,26 +5,31 @@ import numpy as np
 import os.path
 import pickle
 import sys
+import csv
 
-# Port into Node.js
-# https://stackoverflow.com/questions/23450534/how-to-call-a-python-function-from-node-js
 
-# FIXME:
-# first data looks like this:
-# -1,1542678276345,1,1064,1542677700000,252.8,107,145.7,0,11.1,0.1,24.7,68.8,7.3,18,48.9,114.4,0,4.7,0.4,11.5,94.4,6.5,6.840,73,0,30,1,72,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
-# following look like this:
-# -1,1542678364904,1,1066,1542678000000,202.5,107.6,94.7,0,12.9,0.2,31.4,31.7,8.9,18.1,58.1,65.6,0,4.5,0.5,19.6,42.7,6.9,6.940,73,0,30,1,72,0,2,2,1,1,2,1,1,1,1,2,1,2,1,2,1,1,1,2,1,2,1,0,0,0,0,0,1,1,0,0,0,1,1,1,1,1,1,2,1,2,2,1,,2,2,1,1
-# somewhere in this formatting is the problem that is keeping them from being parsed
-
-def get_cols():
-    x_cols = [2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
-              17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+def get_cols(len, option='all'):
+    x_cols_temp = [2, 3, 5, 21, 22, 23, 24, 25, 26, 27]
+    x_cols_energy = [2, 3, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+                     17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27]
+    x_cols_all = x_cols_energy
     y_cols = [28]
+    i = y_cols[0] + 1
+    while i < len:
+        x_cols_all.append(i)
+        i += 1
+    x_cols = x_cols_all
+    if option == 'temp':
+        x_cols = x_cols_temp
+    if option == 'energy':
+        x_cols = x_cols_energy
     return [x_cols, y_cols]
 
 
-def train_model(data_path, model_path, model):
-    [x_cols, y_cols] = get_cols()
+def train_model(data_path, model_path, model, data_option='all'):
+    reader = csv.reader(open(data_path))
+    line = reader.next()
+    [x_cols, y_cols] = get_cols(len(line), data_option)
     X = pd.read_csv(data_path, usecols=x_cols)
     Y = pd.read_csv(data_path, usecols=y_cols)
     clf = model().fit(X, Y.values.flatten())
@@ -33,12 +38,12 @@ def train_model(data_path, model_path, model):
     return clf
 
 
-def test_model(data, model_path):
+def test_model(data, model_path, data_option='all'):
     data = data[0].split(',')
     data = [float(i) for i in data]
     clf = pickle.load(open(model_path, 'rb'))
 
-    [x_cols, y_cols] = get_cols()
+    [x_cols, y_cols] = get_cols(len(data), data_option)
     pd_data = {'row1': data}
 
     X_test = pd.DataFrame.from_dict(pd_data, orient='index').ix[:, x_cols]
@@ -47,53 +52,74 @@ def test_model(data, model_path):
     correct_y = Y_test.values[0][0]
     output_y = (clf.predict(X_test))[0]
     diff_y = correct_y - output_y
-    # prediction = pd.Series(clf.predict(X_test))
-    # output = pd.merge(pd.DataFrame(prediction), Y_test, how='left')
-    # print(output_y, diff_y)
+
     return [output_y, diff_y]
 
 
-def train_bayes():
+def train_bayes(filename="cnb.sav", data_option='all'):
     my_path = os.path.abspath(os.path.dirname(__file__))
     data_path = my_path + r"/data/cph_data.csv"
-    model_path = my_path + r"/models/cnb.sav"
-    clf = train_model(data_path, model_path, GaussianNB)
+    model_path = my_path + r"/models/" + filename
+    clf = train_model(data_path, model_path, GaussianNB, data_option)
     return clf
 
 
-def train_decision_tree():
+def train_decision_tree(filename="clf.sav", data_option='all'):
     my_path = os.path.abspath(os.path.dirname(__file__))
     data_path = my_path + r"/data/cph_data.csv"
-    model_path = my_path + r"/models/clf.sav"
-    clf = train_model(data_path, model_path, tree.DecisionTreeClassifier)
+    model_path = my_path + r"/models/" + filename
+    clf = train_model(data_path, model_path,
+                      tree.DecisionTreeClassifier, data_option)
     return clf
 
 
-def test_tree(data):
-    # data = ['7336,1.54209E+12,1,1302,1.54209E+12,113.9,70.7,42.9,0,2.5,0.3,21.9,0.4,3.7,18.4,46.5,15.2,0,2.7,0.6,9.2,0.4,6,6.93,72,0,15,1,68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0']
+def test_tree(data, filename="clf.sav", data_option='all'):
     my_path = os.path.abspath(os.path.dirname(__file__))
-    model_path = my_path + r"/models/clf.sav"
-    out = test_model(data, model_path)
+    model_path = my_path + r"/models/" + filename
+    out = test_model(data, model_path, data_option)
     return out
 
 
-def test_bayes(data):
+def test_bayes(data, filename="cnb.sav", data_option='all'):
     my_path = os.path.abspath(os.path.dirname(__file__))
-    model_path = my_path + r"/models/cnb.sav"
-    out = test_model(data, model_path)
+    model_path = my_path + r"/models/" + filename
+    out = test_model(data, model_path, data_option)
     return out
+
+
+# data = ['1,1542831252659,3,734,1542830700000,87.3,58.8,28.2,0,18.7,0.3,13.1,0.4,3.7,0.6,21.9,16.1,0,4.8,0.6,10.5,0.4,5.9,0.945,70,1,30,1,72,0,1,1,1,2,2,2,1,1,1,2,1,1,2,1,2,1,1,1,1,1,1,0,0,0,0,0,2,2,0,0,0,2,1,1,1,1,1,1,2,2,2,1,0,1,1,2,1,0,0,0,1,0']
 
 
 def train_all():
-    train_bayes()
-    train_decision_tree()
+    sets_bayes = {"cnb-all.sav": "all",
+                  "cnb-energy.sav": "energy", "cnb-temp.sav": "temp"}
+    sets_tree = {"clf-all.sav": "all",
+                 "clf-energy.sav": "energy", "clf-temp.sav": "temp"}
+    for key, val in sets_bayes.items():
+        print(key)
+        train_bayes(key, val)
+    for key, val in sets_tree.items():
+        train_decision_tree(key, val)
     return
 
 
 def test_all(data):
-    b_out = test_bayes(data)
-    t_out = test_tree(data)
-    print("Bayes, %.2f, %.2f, Tree, %.2f, %.2f" % (b_out[0], b_out[1], t_out[0], t_out[1]))
+    sets_bayes = {"cnb-all.sav": "all",
+                  "cnb-energy.sav": "energy", "cnb-temp.sav": "temp"}
+    sets_tree = {"clf-all.sav": "all",
+                 "clf-energy.sav": "energy", "clf-temp.sav": "temp"}
+    b_out = {}
+    t_out = {}
+    out_str = ''
+    for key, val in sets_bayes.items():
+        b_out[val] = test_bayes(data, key, val)
+    for key, val in sets_tree.items():
+        t_out[val] = test_tree(data, key, val)
+        out_str += "Bayes %s, %.2f, %.2f, Tree %s, %.2f, %.2f, " % (
+            val, b_out[val][0], b_out[val][1], val, t_out[val][0], t_out[val][1])
+    print(out_str)
+    # print("Bayes, %.2f, %.2f, Tree, %.2f, %.2f" %
+    #       (b_out[0], b_out[1], t_out[0], t_out[1]))
     return
 
 
