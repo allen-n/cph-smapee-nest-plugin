@@ -34,7 +34,7 @@ def train_model(data_path, model_path, model, data_option='all'):
     Y = pd.read_csv(data_path, usecols=y_cols)
     clf = model().fit(X, Y.values.flatten())
     pickle.dump(clf, open(model_path, 'wb'))
-    print('Model Saved')
+    # print('Model Saved')
     return clf
 
 
@@ -48,7 +48,6 @@ def test_model(data, model_path, data_option='all'):
 
     X_test = pd.DataFrame.from_dict(pd_data, orient='index').ix[:, x_cols]
     Y_test = pd.DataFrame.from_dict(pd_data, orient='index').ix[:, y_cols]
-    # print(Y_test)
     correct_y = Y_test.values[0][0]
     output_y = (clf.predict(X_test))[0]
     diff_y = correct_y - output_y
@@ -88,18 +87,18 @@ def test_bayes(data, filename="cnb.sav", data_option='all'):
 
 
 # data = ['1,1542831252659,3,734,1542830700000,87.3,58.8,28.2,0,18.7,0.3,13.1,0.4,3.7,0.6,21.9,16.1,0,4.8,0.6,10.5,0.4,5.9,0.945,70,1,30,1,72,0,1,1,1,2,2,2,1,1,1,2,1,1,2,1,2,1,1,1,1,1,1,0,0,0,0,0,2,2,0,0,0,2,1,1,1,1,1,1,2,2,2,1,0,1,1,2,1,0,0,0,1,0']
-
-
+# data = 38529,1542087761751,1,1302,1542087300000,113.9,70.7,42.9,0,2.5,0.3,21.9,0.4,3.7,18.4,46.5,15.2,0,2.7,0.6,9.2,0.4,6,6.930,72,0,15,1,68,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+# bad data = -1,1543282586394,1,1056,1543282200000,239.7,91.9,147.6,0,1,0.1,32,42,12.8,18.1,63,48.3,0,2.4,0.5,20.4,33.2,6.8,740,73,0,30,1,66,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 def train_all():
     sets_bayes = {"cnb-all.sav": "all",
                   "cnb-energy.sav": "energy", "cnb-temp.sav": "temp"}
     sets_tree = {"clf-all.sav": "all",
                  "clf-energy.sav": "energy", "clf-temp.sav": "temp"}
     for key, val in sets_bayes.items():
-        print(key)
         train_bayes(key, val)
     for key, val in sets_tree.items():
         train_decision_tree(key, val)
+    sys.stdout.flush()
     return
 
 
@@ -118,6 +117,7 @@ def test_all(data):
         out_str += "Bayes %s, %.2f, %.2f, Tree %s, %.2f, %.2f, " % (
             val, b_out[val][0], b_out[val][1], val, t_out[val][0], t_out[val][1])
     print(out_str)
+    sys.stdout.flush()
     # print("Bayes, %.2f, %.2f, Tree, %.2f, %.2f" %
     #       (b_out[0], b_out[1], t_out[0], t_out[1]))
     return

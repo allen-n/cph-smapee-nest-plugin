@@ -25,50 +25,32 @@ var globals = {
     first_row: true,
     num_appliances: -1,
     nest: {},
-    prev_events: {}
+    prev_events: {},
+    num_cols: 29
 }
 
 app.get('/printdb', (req, res) => {
     get_all_mongodb((response) => {
-        let str = '';
+        let str = 'Done';
         let csv = '';
-        let download_csv = '';
         let csv_arr = [];
-        let max_row = -1;
+        let max_row = globals.num_appliances + globals.num_cols + 1; //+1 is extra padding
+        var wstream = fs.WriteStream(__dirname + '/data/cph_data.csv');
 
         var prev_events = Array(globals.num_appliances).fill(0);
+        let tick = response.length / 100;
         for (let i = response.length - 1; i >= 0; i--) {
             csv = i + ',';
             [csv, prev_events] = row_to_csv(response[i], csv, prev_events);
-            csv_arr[i] = csv.split(',');
-            if (csv_arr[i].length > max_row) {
-                max_row = csv_arr[i].length
-            }
-            // download_csv += csv + '\r\n';
-            str += csv + '<br>'
-            // res.write(csv + '<br>')
+            csv = remove_csv_blanks(csv, max_row)
+            wstream.write(csv + '\r\n');
         }
-        for (let i = 0; i < csv_arr.length; i++) {
-            for (let j = 0; j < max_row; j++) {
-                if (csv_arr[i][j] == '' || typeof csv_arr[i][j] == 'undefined') {
-                    csv_arr[i][j] = '0';
-                }
-            }
-            download_csv += csv_arr[i].join(',') + '\r\n'
-        }
+        wstream.end();
         globals.prev_events = prev_events;
         delete date;
-        var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\'">Refresh List</button> \
-        <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br> \
-        <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_ml\';">Download ML Data</button><br> \
-        Index, Srv_Time,Day of week, mins into day, Timestamp, Total_Consumption, Active[main1, main2, main3, \
-        c1,c2,c3,c4,c5,c6], Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], humidity(%),ambient_temp(F), \
-        fan(1/0), fan_timer_duration(min), target_temp(F), Appliance[id_0...id_n], <br>';
-        res.send(my_html + str);
-        fs.writeFile(__dirname + '/data/cph_data.csv', download_csv, function (err) {
-            if (err) throw err;
-
-        });
+        wstream.on('finish', () => {
+            res.redirect('/downloads');
+        })
     });
 });
 
@@ -85,6 +67,16 @@ function row_to_csv(response, csv, prev_events) {
     csv += ',' + prev_events.join(',');
     return [csv, prev_events]
 }
+
+app.get('/downloads', (req, res) => {
+    var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\'">Refresh List</button> \
+    <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br> \
+    <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_ml\';">Download ML Data</button><br> \
+    Index, Srv_Time,Day of week, mins into day, Timestamp, Total_Consumption, Active[main1, main2, main3, \
+    c1,c2,c3,c4,c5,c6], Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], humidity(%),ambient_temp(F), \
+    fan(1/0), fan_timer_duration(min), thermostat_mode, target_temp(F), Appliance[id_0...id_n], <br>';
+    res.send(my_html);
+});
 
 app.get('/download_data', (req, res) => {
     var file = __dirname + '/data/cph_data.csv';
@@ -229,10 +221,11 @@ function re_energy_scrape() {
                     insert_to_mongodb(mongo_row);
                     let data_str = row_to_csv(mongo_row, '', globals.prev_events);
                     data_str = '-1,' + data_str[0];
-                    data_str = remove_csv_blanks(data_str);
+                    let max_row = globals.num_appliances + globals.num_cols + 1; //+1 is extra padding
+                    data_str = remove_csv_blanks(data_str, max_row);
                     py_test_all(data_str, (output) => {
                         // console.log('py_test_all fired!')
-                        output = mongo_row.srv_time + ',' + output; // FIXME: Problem is here somewhere!
+                        output = mongo_row.srv_time + ',' + output;
                         fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
                             if (err) throw err;
                             // console.log('Saved!');
@@ -245,12 +238,14 @@ function re_energy_scrape() {
     setTimeout(re_energy_scrape, globals.scrape_interval_energy);
 }
 
-function remove_csv_blanks(csv) {
+function remove_csv_blanks(csv, len = null) {
     let arr = csv.split(',')
-    for (let i = 0; i < arr.length; i++) {
-        // console.log(arr[i])
-        if (arr[i] == '') {
-            arr[i] = 0;
+    if (len == null) {
+        len = arr.length
+    }
+    for (let i = 0; i < len; i++) {
+        if (arr[i] == '' || typeof arr[i] == 'undefined') {
+            arr[i] = '0';
         }
     }
     return arr.join(',')
@@ -626,6 +621,7 @@ function py_test_all(data_str, callback) {
     const pyProg = spawn('python', [__dirname + '/classifier.py', 'test-all', data_str]);
     pyProg.stderr.on('data', (err) => {
         pyProg.kill()
+        console.log('Testing error!')
         console.log(err.toString())
     })
 
@@ -648,6 +644,7 @@ function py_train_all(callback) {
     const pyProg = spawn('python', [__dirname + '/classifier.py', 'train-all']);
     pyProg.stderr.on('data', (err) => {
         pyProg.kill()
+        console.log('Training error!')
         console.log(err.toString())
     })
 
