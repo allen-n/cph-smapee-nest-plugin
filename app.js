@@ -1,7 +1,7 @@
 const express = require('express')
 const app = express()
 const request = require('request')
-var MongoClient = require('mongodb').MongoClient //to go to csv: https://www.npmjs.com/package/json2csv
+var MongoClient = require('mongodb').MongoClient
 const port = 3000
 const Json2csvParser = require('json2csv').Parser;
 const fs = require('fs');
@@ -30,24 +30,28 @@ var globals = {
 }
 
 app.get('/printdb', (req, res) => {
-    get_all_mongodb((response) => {
-        let str = 'Done';
+    stream_all_mongodb((rstream) => {
         let csv = '';
-        let csv_arr = [];
+        let i = 0;
         let max_row = globals.num_appliances + globals.num_cols + 1; //+1 is extra padding
         var wstream = fs.WriteStream(__dirname + '/data/cph_data.csv');
-
         var prev_events = Array(globals.num_appliances).fill(0);
-        let tick = response.length / 100;
-        for (let i = response.length - 1; i >= 0; i--) {
+        rstream.on('data', (doc) => {
             csv = i + ',';
-            [csv, prev_events] = row_to_csv(response[i], csv, prev_events);
+            i += 1;
+            [csv, prev_events] = row_to_csv(doc, csv, prev_events);
             csv = remove_csv_blanks(csv, max_row)
-            wstream.write(csv + '\r\n');
-        }
-        wstream.end();
-        globals.prev_events = prev_events;
-        delete date;
+            if (!wstream.write(csv + '\r\n')) { //delay if buffer over its highwatermark
+                rstream.pause();
+                wstream.once('drain', () => {
+                    rstream.resume();
+                })
+            }
+        });
+        rstream.once('end', () => {
+            wstream.end();
+            globals.prev_events = prev_events;
+        });
         wstream.on('finish', () => {
             res.redirect('/downloads');
         })
@@ -189,11 +193,12 @@ function re_appliance_scrape() {
             globals.prev_events = Array(globals.num_appliances).fill(0);
             re_energy_scrape(); //Now that we have the total list of devices, look at device events
         }
-        py_train_all((data) => {
-            let date = Date.now()
-            console.log('Model Retrained at:' + date.toString())
-            // console.log(data);
-        });
+        // FIXME: python
+        // py_train_all((data) => {
+        //     let date = Date.now()
+        //     console.log('Model Retrained at:' + date.toString())
+        //     // console.log(data);
+        // });
     });
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
@@ -223,14 +228,15 @@ function re_energy_scrape() {
                     data_str = '-1,' + data_str[0];
                     let max_row = globals.num_appliances + globals.num_cols + 1; //+1 is extra padding
                     data_str = remove_csv_blanks(data_str, max_row);
-                    py_test_all(data_str, (output) => {
-                        // console.log('py_test_all fired!')
-                        output = mongo_row.srv_time + ',' + output;
-                        fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
-                            if (err) throw err;
-                            // console.log('Saved!');
-                        });
-                    });
+                    // FIXME: Python
+                    // py_test_all(data_str, (output) => {
+                    //     // console.log('py_test_all fired!')
+                    //     output = mongo_row.srv_time + ',' + output;
+                    //     fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
+                    //         if (err) throw err;
+                    //         // console.log('Saved!');
+                    //     });
+                    // });
                 });
             });
         });
@@ -479,6 +485,46 @@ function get_all_mongodb(callback, num_records = 100000, natural_order = false, 
         });
     });
 }
+
+function stream_all_mongodb(callback, num_records = 100000, natural_order = false, collection_name = 'sp_data', mongo_url = 'mongodb://localhost:27017/cphdb') {
+    let ord = -1;
+    if (natural_order) {
+        ord = 1;
+    }
+    MongoClient.connect(mongo_url, { useNewUrlParser: true }, (err, db) => {
+        if (err) throw err;
+        var dbo = db.db("cphdb");
+        var col = dbo.collection(collection_name);
+        var cursor = col.find({}, { sort: { $natural: ord } }).stream();
+        callback(cursor);
+        cursor.once('end', () => {
+            db.close();
+        });
+    });
+}
+
+// get_all_mongodb((response) => {
+//     let str = 'Done';
+//     let csv = '';
+//     let csv_arr = [];
+//     let max_row = globals.num_appliances + globals.num_cols + 1; //+1 is extra padding
+//     var wstream = fs.WriteStream(__dirname + '/data/cph_data.csv');
+
+//     var prev_events = Array(globals.num_appliances).fill(0);
+//     let tick = response.length / 100;
+//     for (let i = response.length - 1; i >= 0; i--) {
+//         csv = i + ',';
+//         [csv, prev_events] = row_to_csv(response[i], csv, prev_events);
+//         csv = remove_csv_blanks(csv, max_row)
+//         wstream.write(csv + '\r\n');
+//     }
+//     wstream.end();
+//     globals.prev_events = prev_events;
+//     delete date;
+//     wstream.on('finish', () => {
+//         res.redirect('/downloads');
+//     })
+// });
 
 app.get('/nest', (req, res) => {
     res.redirect('https://home.nest.com/login/oauth2?client_id=7ce5f2f9-1971-4933-b340-c7cba51bb7e5&state=STATE');
