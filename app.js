@@ -54,6 +54,11 @@ app.get('/printdb', (req, res) => {
         });
         wstream.on('finish', () => {
             res.redirect('/downloads');
+            // py_train_all((data) => {
+            //     let date = Date.now()
+            //     console.log('Model Retrained at:' + date.toString())
+            //     // console.log(data);
+            // });
         })
     });
 });
@@ -192,12 +197,13 @@ function re_appliance_scrape() {
         if (globals.first_row) {
             globals.prev_events = Array(globals.num_appliances).fill(0);
             re_energy_scrape(); //Now that we have the total list of devices, look at device events
+        } else {
+            py_train_all((data) => {
+                let date = Date.now()
+                console.log('Model Retrained at:' + date.toString())
+                // console.log(data);
+            });
         }
-        py_train_all((data) => {
-            let date = Date.now()
-            console.log('Model Retrained at:' + date.toString())
-            // console.log(data);
-        });
     });
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
