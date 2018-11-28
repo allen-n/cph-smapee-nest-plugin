@@ -193,12 +193,11 @@ function re_appliance_scrape() {
             globals.prev_events = Array(globals.num_appliances).fill(0);
             re_energy_scrape(); //Now that we have the total list of devices, look at device events
         }
-        // FIXME: python
-        // py_train_all((data) => {
-        //     let date = Date.now()
-        //     console.log('Model Retrained at:' + date.toString())
-        //     // console.log(data);
-        // });
+        py_train_all((data) => {
+            let date = Date.now()
+            console.log('Model Retrained at:' + date.toString())
+            // console.log(data);
+        });
     });
     setTimeout(re_appliance_scrape, globals.scrape_interval_appliance);
 }
@@ -228,15 +227,14 @@ function re_energy_scrape() {
                     data_str = '-1,' + data_str[0];
                     let max_row = globals.num_appliances + globals.num_cols + 1; //+1 is extra padding
                     data_str = remove_csv_blanks(data_str, max_row);
-                    // FIXME: Python
-                    // py_test_all(data_str, (output) => {
-                    //     // console.log('py_test_all fired!')
-                    //     output = mongo_row.srv_time + ',' + output;
-                    //     fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
-                    //         if (err) throw err;
-                    //         // console.log('Saved!');
-                    //     });
-                    // });
+                    py_test_all(data_str, (output) => {
+                        // console.log('py_test_all fired!')
+                        output = mongo_row.srv_time + ',' + output;
+                        fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
+                            if (err) throw err;
+                            // console.log('Saved!');
+                        });
+                    });
                 });
             });
         });
