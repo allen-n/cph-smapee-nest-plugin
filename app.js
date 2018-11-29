@@ -6,6 +6,7 @@ const port = 3000
 const Json2csvParser = require('json2csv').Parser;
 const fs = require('fs');
 const https = require('https');
+const handlebars = require('handlebars');
 
 const { spawn } = require('child_process');
 
@@ -73,14 +74,31 @@ function row_to_csv(response, csv, prev_events) {
     return [csv, prev_events]
 }
 
+
 app.get('/downloads', (req, res) => {
-    var my_html = '<button onclick="location.href = \'https://cyberpoweredhome.com:3000/printdb\'">Refresh List</button> \
-    <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_data\';">Download CSV</button><br> \
-    <button onclick="location.href = \'https://cyberpoweredhome.com:3000/download_ml\';">Download ML Data</button><br> \
-    Index, Srv_Time,Day of week, mins into day, Timestamp, Total_Consumption, Active[main1, main2, main3, \
-    c1,c2,c3,c4,c5,c6], Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], humidity(%),ambient_temp(F), \
-    fan(1/0), fan_timer_duration(min), thermostat_mode, target_temp(F), Appliance[id_0...id_n], <br>';
-    res.send(my_html);
+    const inFile = './landing.hbs';
+    const source = fs.readFileSync(inFile, 'utf8');
+    py_parse_ml((data) => {
+        data = data.slice(0, data.length - 1)
+        data = data.split(',');
+
+        const hbs_data = {
+            b: {
+                temp: data[2],
+                energy: data[0],
+                all: data[4]
+            },
+            t: {
+                temp: data[3],
+                energy: data[1],
+                all: data[5]
+            }
+        }
+        console.log(data)
+        const template = handlebars.compile(source, { strict: true });
+        const result = template(hbs_data);
+        res.send(result);
+    });
 });
 
 app.get('/download_data', (req, res) => {
@@ -692,6 +710,29 @@ function py_train_all(callback) {
     pyProg.stderr.on('data', (err) => {
         pyProg.kill()
         console.log('Training error!')
+        console.log(err.toString())
+    })
+
+    pyProg.stdout.on("data", function (data) {
+        callback(data.toString())
+        // console.log(data.toString());
+        // res.write(data);
+        // res.end('end');
+        pyProg.kill()
+    });
+
+    pyProg.on("close", (number, signal, string) => {
+        // console.log(number, signal, string)
+        // res.end('end2')
+        pyProg.kill()
+    })
+}
+
+function py_parse_ml(callback) {
+    const pyProg = spawn('python', [__dirname + '/csv-parser.py', 'get-effic']);
+    pyProg.stderr.on('data', (err) => {
+        pyProg.kill()
+        console.log('CSV Parser error!')
         console.log(err.toString())
     })
 

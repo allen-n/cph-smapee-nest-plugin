@@ -15,6 +15,7 @@
   "homepage": "https://bitbucket.org/allen-n/cph-interface#readme",
   "dependencies": {
     "express": "^4.16.4",
+    "handlebars": "^4.0.12",
     "https": "^1.0.0",
     "json2csv": "^4.3.0",
     "mongodb": "^3.1.9",

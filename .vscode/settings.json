@@ -1,6 +1,7 @@
 {
     "python.linting.pylintEnabled": true,
     "cSpell.words": [
+        "effic",
         "rstream",
         "wstream"
     ]

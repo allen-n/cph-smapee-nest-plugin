@@ -1,0 +1,36 @@
+<button onclick="location.href = 'https://cyberpoweredhome.com:3000/printdb'">Refresh List</button> <br>
+<button onclick="location.href = 'https://cyberpoweredhome.com:3000/download_data'">Download CSV</button> <br>
+<button onclick="location.href = 'https://cyberpoweredhome.com:3000/download_ml'">Download ML Data</button> <br>
+<button onclick="location.href = 'https://cyberpoweredhome.com:3000/nest'">Reset Client (CAUTION)</button>
+<br>
+Index, Srv_Time,Day of week, mins into day, Timestamp, Total_Consumption, Active[main1, main2, main3,
+c1,c2,c3,c4,c5,c6], Reactive[main1, main2, main3, c1,c2,c3,c4,c5,c6], humidity(%),ambient_temp(F),
+fan(1/0), fan_timer_duration(min), thermostat_mode, target_temp(F), Appliance[id_0...id_n],
+<br>Average Prediction Errors:<br>
+<table>
+    <tr>
+        <td>Input Data</td>
+        <td>Algorithm B Average Error</td>
+        <td>Algorithm T Average Error</td>
+    </tr>
+    <tr>
+        <td> Temperature</td>
+        <td> {{b.temp}}</td>
+        <td> {{t.temp}}</td>
+    </tr>
+    <tr>
+        <td>Temperature, Energy</td>
+        <td> {{b.energy}}</td>
+        <td> {{t.energy}}</td>
+    </tr>
+    <tr>
+        <td>Temperature, Energy, Appliance Activity</td>
+        <td> {{b.all}}</td>
+        <td> {{t.all}}</td>
+    </tr>
+</table>
+
+{{!-- Just Temperature Data: Algorithm 1: '+ data_arr[2] + ' Algorithm 2: ' + data_arr[3] + '<br> \
+Just Gross Energy Data: Algorithm 1: '+ data_arr[0] + ' Algorithm 2: ' + data_arr[1] + '<br> \
+Gross Energy and Appliance Activity Data: Algorithm 1: '+ data_arr[4] + ' Algorithm 2: ' + data_arr[5]
++ '<br>'; --}}
