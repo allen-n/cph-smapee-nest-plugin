@@ -54,11 +54,7 @@ app.get('/printdb', (req, res) => {
         });
         wstream.on('finish', () => {
             res.redirect('/downloads');
-            // py_train_all((data) => {
-            //     let date = Date.now()
-            //     console.log('Model Retrained at:' + date.toString())
-            //     // console.log(data);
-            // });
+
         })
     });
 });
