@@ -94,7 +94,7 @@ app.get('/downloads', (req, res) => {
                 all: data[5]
             }
         }
-        console.log(data)
+        // console.log(data)
         const template = handlebars.compile(source, { strict: true });
         const result = template(hbs_data);
         res.send(result);
@@ -231,6 +231,10 @@ function re_energy_scrape() {
     let options_get_energy_data = gen_get_energy_data();
     let options_get_thermostat = gen_get_thermostat_data();
     let mongo_row = {};
+    let mongo_py_test = {
+        time: null,
+        row: null
+    };
     request.get(options_get_appliance_events, (err, httpResponse, body) => {
         mongo_row.appliance = appliance_events_req(body, err);
         request.get(options_get_energy_data, (err, httpResponse, body) => {
@@ -251,6 +255,9 @@ function re_energy_scrape() {
                     py_test_all(data_str, (output) => {
                         // console.log('py_test_all fired!')
                         output = mongo_row.srv_time + ',' + output;
+                        mongo_py_test.time = mongo_row.srv_time;
+                        mongo_py_test.row = output;
+                        insert_to_mongodb(mongo_py_test, 'py_test_data');
                         fs.appendFile(__dirname + '/data/ML_predictions.csv', output, function (err) {
                             if (err) throw err;
                             // console.log('Saved!');
@@ -398,30 +405,6 @@ function energy_data_req(body, err, callback) {
     // console.log('Energy Use Event Fetch Successful::', data);
 }
 
-// function appliance_events_to_csv(recent_events, opts = { fields: ['totalPower', 'activePower'], header: false }) {
-//     let csv = '';
-//     const parser = new Json2csvParser(opts);
-//     for (let i = 0; i < recent_events.length; i++) {
-//         // if (recent_events[i] == null) {
-//         //     csv += ',x';
-//         // } else {
-//         try {
-//             csv += ',';
-//             csv += parser.parse(recent_events[i]);
-//         } catch (err) {
-//             console.error(err);
-//         }
-//     }
-//     // }
-//     // if (recent_events.length == 0) {
-//     //     for (let i = 0; i < globals.num_appliances; i++) {
-//     //         csv += ',xs';
-
-//     //     }
-//     // }
-//     return csv;
-// }
-
 function appliance_events_to_csv(recent_events, prev_events) {
     let csv = '';
     var sign;
@@ -562,17 +545,18 @@ app.get('/nest_auth_success*', (req, res) => {
             code: my_code
         }
     };
-
     request.post(options_init_auth, (err, httpResponse, body) => {
         if (err) {
             return console.error('upload failed:', err);
         }
         // console.log('Upload successful!  Server responded with:', body);
         globals.nest.session = JSON.parse(body);
-        res.send("Code: " + my_code + ", State: " + state + "<br>Nest Auth Complete, start collecting data." + my_html);
+        py_train_all((data) => { });
+        res.send("Code: " + my_code + ", State: " + state + "<br>Nest Auth Complete, model retrained, start collecting data." + my_html);
         // get_thermostat_data();
         // setTimeout(refresh_my_token_nest, globals.nest.session.expires_in + 10)
         // res.redirect('/auth_success')
+
     });
 });
 
